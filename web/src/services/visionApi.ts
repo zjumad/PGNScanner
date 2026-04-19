@@ -8,6 +8,21 @@ const BUILTIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string || '';
 export interface OcrResult {
   header: GameHeader;
   moves: RecognizedMove[];
+  grid?: GridDescriptor;
+}
+
+export interface GridHalf {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rows: number;
+}
+
+export interface GridDescriptor {
+  rotation: 0 | 90 | 180 | 270;
+  leftHalf: GridHalf;
+  rightHalf: GridHalf;
 }
 
 // Base prompt shared by all models — chess notation rules, sheet layout, response format
@@ -198,20 +213,6 @@ function parseBBox(raw: unknown): import('../types').CellBoundingBox | undefined
   return { x, y, width: w, height: h };
 }
 
-interface GridHalf {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rows: number;
-}
-
-interface GridDescriptor {
-  rotation: 0 | 90 | 180 | 270;
-  leftHalf: GridHalf;
-  rightHalf: GridHalf;
-}
-
 function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const g = raw as Record<string, unknown>;
@@ -260,7 +261,7 @@ function validateGridHalf(half: GridHalf): boolean {
   return true;
 }
 
-function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
+export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
   const half = moveNumber <= grid.leftHalf.rows ? grid.leftHalf : grid.rightHalf;
   const rowIndex = moveNumber <= grid.leftHalf.rows
     ? moveNumber - 1
@@ -322,6 +323,7 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
         rotation,
       };
     }),
+    grid: grid || undefined,
   };
 }
 
@@ -626,5 +628,7 @@ export function mergeOcrResults(results: OcrResult[]): OcrResult {
   }
 
   const mergedMoves = [...moveMap.values()].sort((a, b) => a.moveNumber - b.moveNumber);
-  return { header: mergedHeader, moves: mergedMoves };
+  // Use the first available grid descriptor
+  const grid = results.find(r => r.grid)?.grid;
+  return { header: mergedHeader, moves: mergedMoves, grid };
 }

@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState } from './types';
 import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
-import { recognizeScoreSheet, fileToBase64, mergeOcrResults } from './services/visionApi';
-import type { ApiProvider } from './services/visionApi';
+import { recognizeScoreSheet, fileToBase64, mergeOcrResults, computeRowBBox } from './services/visionApi';
+import type { ApiProvider, GridDescriptor } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
@@ -34,6 +34,7 @@ export default function App() {
   const [_imageRotations, setImageRotations] = useState<(0 | 90 | 180 | 270)[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [rawOcrJson, setRawOcrJson] = useState<string>('');
+  const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
@@ -121,6 +122,7 @@ export default function App() {
         // Merge results from all pages
         const result = mergeOcrResults(ocrResults);
         setRawOcrJson(JSON.stringify(result, null, 2));
+        if (result.grid) setOcrGrid(result.grid);
 
         const rawMoves = result.moves.map((m) => ({
           moveNumber: m.moveNumber,
@@ -289,6 +291,19 @@ export default function App() {
     });
     setError(null);
     imageFilesRef.current = [];
+    setOcrGrid(null);
+  }, []);
+
+  const handleGridCalibrate = useCallback((newGrid: GridDescriptor) => {
+    setOcrGrid(newGrid);
+    // Recompute bbox on all validated moves
+    setGameState((prev) => ({
+      ...prev,
+      moves: prev.moves.map((m) => {
+        const computed = computeRowBBox(m.moveNumber, newGrid);
+        return { ...m, bbox: computed.bbox, rotation: computed.rotation };
+      }),
+    }));
   }, []);
 
   const handleNavigate = useCallback(
@@ -611,7 +626,7 @@ export default function App() {
                       <h3 className="text-sm font-semibold text-gray-700 mb-2">Uploaded Images</h3>
                       <div className="flex flex-col gap-2">
                         {gameState.imageUrls.map((url, idx) => (
-                          <DebugImage key={idx} url={url} pageIndex={idx} />
+                          <DebugImage key={idx} url={url} pageIndex={idx} grid={ocrGrid} onGridCalibrate={handleGridCalibrate} />
                         ))}
                       </div>
                     </div>
@@ -665,38 +680,141 @@ function NavigationControls({
   );
 }
 
-/** Debug image with normalized coordinate overlay on hover */
-function DebugImage({ url, pageIndex }: { url: string; pageIndex: number }) {
+/** Debug image with grid overlay, coordinate display, and click-to-calibrate */
+function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
+  url: string;
+  pageIndex: number;
+  grid: GridDescriptor | null;
+  onGridCalibrate: (grid: GridDescriptor) => void;
+}) {
   const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
+  const [calibrating, setCalibrating] = useState(false);
+  const [anchor1, setAnchor1] = useState<{ x: number; y: number } | null>(null);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
+  const getNormalizedCoords = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const el = e.currentTarget.closest('.debug-image-container') as HTMLElement;
+    if (!el) return { x: 0, y: 0 };
+    const img = el.querySelector('img') as HTMLElement;
+    if (!img) return { x: 0, y: 0 };
     const rect = img.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    setCoords({ x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
+    return {
+      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+    };
   }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    setCoords(getNormalizedCoords(e));
+  }, [getNormalizedCoords]);
 
   const handleMouseLeave = useCallback(() => setCoords(null), []);
 
+  const handleClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (!calibrating) return;
+    const pt = getNormalizedCoords(e);
+    if (!anchor1) {
+      setAnchor1(pt);
+    } else {
+      // Two points define the left half grid: anchor1 = top-left of row 1, pt = bottom-right of row 30
+      const topLeft = { x: Math.min(anchor1.x, pt.x), y: Math.min(anchor1.y, pt.y) };
+      const bottomRight = { x: Math.max(anchor1.x, pt.x), y: Math.max(anchor1.y, pt.y) };
+      const newGrid: GridDescriptor = {
+        rotation: grid?.rotation || 0,
+        leftHalf: {
+          x: topLeft.x,
+          y: topLeft.y,
+          width: bottomRight.x - topLeft.x,
+          height: bottomRight.y - topLeft.y,
+          rows: grid?.leftHalf.rows || 30,
+        },
+        rightHalf: grid?.rightHalf || { x: 0, y: 0, width: 0, height: 0, rows: 30 },
+      };
+      onGridCalibrate(newGrid);
+      setCalibrating(false);
+      setAnchor1(null);
+    }
+  }, [calibrating, anchor1, grid, getNormalizedCoords, onGridCalibrate]);
+
+  const startCalibrating = useCallback(() => {
+    setCalibrating(true);
+    setAnchor1(null);
+  }, []);
+
+  const cancelCalibrating = useCallback(() => {
+    setCalibrating(false);
+    setAnchor1(null);
+  }, []);
+
   return (
-    <div className="border border-gray-300 rounded overflow-hidden">
-      <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 flex justify-between">
+    <div className="border border-gray-300 rounded overflow-hidden debug-image-container">
+      <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 flex justify-between items-center">
         <span>Page {pageIndex + 1}</span>
-        {coords && (
-          <span className="font-mono text-blue-600">
-            x: {coords.x.toFixed(3)}, y: {coords.y.toFixed(3)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {coords && (
+            <span className="font-mono text-blue-600">
+              x: {coords.x.toFixed(3)}, y: {coords.y.toFixed(3)}
+            </span>
+          )}
+          {calibrating ? (
+            <div className="flex items-center gap-1">
+              <span className="text-orange-600 font-semibold">
+                {anchor1 ? 'Click bottom-right of last row' : 'Click top-left of row 1'}
+              </span>
+              <button onClick={cancelCalibrating} className="px-1.5 py-0.5 bg-gray-200 rounded text-xs hover:bg-gray-300">✕</button>
+            </div>
+          ) : (
+            <button onClick={startCalibrating} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+              📐 Calibrate Grid
+            </button>
+          )}
+        </div>
       </div>
-      <div className="relative">
+      <div className="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
         <img
           src={url}
           alt={`Uploaded page ${pageIndex + 1}`}
-          className="w-full cursor-crosshair"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
+          className={`w-full ${calibrating ? 'cursor-crosshair' : 'cursor-crosshair'}`}
         />
+        {/* Grid overlay */}
+        {grid && grid.leftHalf.width > 0 && (
+          <div
+            className="absolute border-2 border-red-500 pointer-events-none"
+            style={{
+              left: `${grid.leftHalf.x * 100}%`,
+              top: `${grid.leftHalf.y * 100}%`,
+              width: `${grid.leftHalf.width * 100}%`,
+              height: `${grid.leftHalf.height * 100}%`,
+              opacity: 0.7,
+            }}
+          >
+            <span className="absolute -top-4 left-0 text-[10px] text-red-600 bg-white/80 px-1 rounded">
+              Left Grid (1-{grid.leftHalf.rows})
+            </span>
+          </div>
+        )}
+        {grid && grid.rightHalf.width > 0 && (
+          <div
+            className="absolute border-2 border-blue-500 pointer-events-none"
+            style={{
+              left: `${grid.rightHalf.x * 100}%`,
+              top: `${grid.rightHalf.y * 100}%`,
+              width: `${grid.rightHalf.width * 100}%`,
+              height: `${grid.rightHalf.height * 100}%`,
+              opacity: 0.7,
+            }}
+          >
+            <span className="absolute -top-4 left-0 text-[10px] text-blue-600 bg-white/80 px-1 rounded">
+              Right Grid (31-{30 + grid.rightHalf.rows})
+            </span>
+          </div>
+        )}
+        {/* Calibration anchor point */}
+        {calibrating && anchor1 && (
+          <div
+            className="absolute w-3 h-3 bg-orange-500 rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none border border-white"
+            style={{ left: `${anchor1.x * 100}%`, top: `${anchor1.y * 100}%` }}
+          />
+        )}
       </div>
     </div>
   );
