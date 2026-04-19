@@ -53,7 +53,11 @@ The app follows this workflow:
 
 ### Step 1: Upload
 
-- The user does not have to provide any API Key. This app will use a builtin GitHub Personal Access Token (PAT) for GitHub Models API. You should store the token within this app.
+- The user does not have to provide any API Key. This app uses builtin API keys for both providers. The keys are stored in environment variables within the app.
+- The user selects a **vision model** from a dropdown on the upload screen:
+  - **Gemini 2.5 Flash** (default) — Google's Gemini API
+  - **GPT-4o (GitHub Models)** — OpenAI GPT-4o via GitHub Models inference API
+- The selected model is persisted in localStorage across sessions.
   
 - The user uploads one or more photos of a US Chess Official Score Sheet by:
   - Clicking the upload area to open a file picker (supports selecting multiple files).
@@ -65,7 +69,7 @@ The app follows this workflow:
 
 ### Step 2: Processing
 
-- Each image is sent as base64 to the GitHub Models API (`gpt-4o`) with a detailed system prompt describing the score sheet layout and chess notation rules.
+- Each image is sent as base64 to the selected Vision API (**Gemini 2.5 Flash** or **GPT-4o** via GitHub Models) with a detailed system prompt describing the score sheet layout and chess notation rules.
 - For **multi-image uploads**, each image is processed sequentially with a progress indicator ("Recognizing image 1 of 2..."). Results are merged by move number — overlapping half-moves keep the higher-confidence version.
 - The API returns a JSON response containing:
   - **Header fields**: Event, Date, Round, White, Black, White Elo, Black Elo, Opening, ECO, Result.
@@ -177,10 +181,12 @@ In the review screen, the following keyboard shortcuts are available (when the a
 
 ## API Configuration
 
-- **GitHub Models** (default): Uses `gpt-4o` via GitHub Models inference API at `models.inference.ai.azure.com`. Authenticated with a GitHub Personal Access Token (PAT) stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
-- Uses raw `fetch` calls (no SDK), OpenAI-compatible chat completions format.
+- **Gemini** (default): Uses `gemini-2.5-flash` via REST API. The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
+- **GitHub Models**: Uses `gpt-4o` via GitHub Models inference API at `models.inference.ai.azure.com`. Authenticated with a GitHub Personal Access Token (PAT) stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
+- Both providers use raw `fetch` calls (no SDK).
 - Temperature is set to 0 for deterministic output. Max output tokens: 16384.
-- No user-facing API key configuration — the token is embedded at build time.
+- No user-facing API key configuration — keys are embedded at build time.
+- The user selects the model on the upload screen; the choice is persisted in localStorage.
 
 ## Improvement Features
 
