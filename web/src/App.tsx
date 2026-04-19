@@ -725,9 +725,9 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
           y: topLeft.y,
           width: bottomRight.x - topLeft.x,
           height: bottomRight.y - topLeft.y,
-          rows: grid?.leftHalf.rows || 30,
+          rows: grid?.leftHalf.rows || 25,
         },
-        rightHalf: grid?.rightHalf || { x: 0, y: 0, width: 0, height: 0, rows: 30 },
+        rightHalf: grid?.rightHalf || { x: 0, y: 0, width: 0, height: 0, rows: 25 },
       };
       onGridCalibrate(newGrid);
       setCalibrating(false);
@@ -804,7 +804,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             }}
           >
             <span className="absolute -top-4 left-0 text-[10px] text-blue-600 bg-white/80 px-1 rounded">
-              Right Grid (31-{30 + grid.rightHalf.rows})
+              Right Grid ({grid.leftHalf.rows + 1}-{grid.leftHalf.rows + grid.rightHalf.rows})
             </span>
           </div>
         )}

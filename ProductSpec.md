@@ -235,7 +235,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - Processing shows progress per image ("Recognizing image 1 of 2...").
 
 ### Image Region Highlighting
-- The Image tab shows a **move position indicator** displaying the currently selected move's number, color, and approximate grid location (left column rows 1–30, right column rows 31–60).
+- The Image tab shows a **move position indicator** displaying the currently selected move's number, color, and approximate grid location (e.g., left column rows 1–25, right column rows 26–50 for a 25-row sheet).
 - This is an off-image indicator — no unreliable on-image overlay.
 
 ### Smart Suggestions
