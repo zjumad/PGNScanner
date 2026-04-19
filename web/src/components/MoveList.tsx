@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import type { ValidatedMove } from '../types';
+import LegalMovesPanel from './LegalMovesPanel';
 
 const ROWS_PER_COLUMN = 30;
 
@@ -22,6 +23,13 @@ interface MoveListProps {
     onNext: () => void;
   };
   selectedMove?: ValidatedMove | null;
+  // Legal moves panel props
+  legalMoves: string[];
+  smartSuggestions: string[];
+  legalMovesLabel: string;
+  legalMovesSide: 'w' | 'b';
+  onLegalMoveSelect: (san: string) => void;
+  showLegalMoves: boolean;
 }
 
 export default function MoveList({
@@ -36,6 +44,12 @@ export default function MoveList({
   imageUrls,
   imagePageInfo,
   selectedMove,
+  legalMoves,
+  smartSuggestions,
+  legalMovesLabel,
+  legalMovesSide,
+  onLegalMoveSelect,
+  showLegalMoves,
 }: MoveListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -232,47 +246,11 @@ export default function MoveList({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col">
-      {/* Summary bar */}
-      <div className="px-3 py-2 border-b border-gray-200 font-semibold text-gray-700 flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Moves</span>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-gray-400">Jump to issue</span>
-            <button onClick={() => onNavigateToError('prev')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Previous issue">▲</button>
-            <button onClick={() => onNavigateToError('next')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Next issue">▼</button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3 text-[10px] text-gray-500 font-normal">
-          {(() => {
-            const counts = { exact: 0, fuzzy: 0, forced: 0, corrected: 0, invalid: 0, speculative: 0 };
-            for (const m of moves) {
-              if (m.matchType === 'speculative') counts.speculative++;
-              else if (!m.isValid) counts.invalid++;
-              else if (m.matchType === 'corrected') counts.corrected++;
-              else if (m.matchType === 'forced') counts.forced++;
-              else if (m.matchType === 'fuzzy') counts.fuzzy++;
-              else counts.exact++;
-            }
-            return (
-              <>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Exact {counts.exact}</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />Fuzzy {counts.fuzzy}</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Forced {counts.forced}</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Corrected {counts.corrected}</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Invalid {counts.invalid}</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />Speculative {counts.speculative}</span>
-              </>
-            );
-          })()}
-          <span className="text-gray-400 ml-auto">{moves.filter(m => m.isValid).length}/{moves.length}</span>
-        </div>
-      </div>
-
       {/* Column headers with image controls */}
       <div className="flex items-center bg-gray-50 border-b border-gray-200">
-        <div style={{ width: hasImages ? '20%' : '50%' }} className="px-2 py-1 text-xs text-gray-500 font-medium">White</div>
+        <div style={{ width: hasImages ? '25%' : '50%' }} className="px-2 py-1 text-xs text-gray-500 font-medium">White</div>
         {hasImages && (
-          <div style={{ width: '60%' }} className="flex-shrink-0 px-1 py-1 text-xs text-gray-500 font-medium border-x border-gray-200 flex items-center justify-between">
+          <div style={{ width: '50%' }} className="flex-shrink-0 px-1 py-1 text-xs text-gray-500 font-medium border-x border-gray-200 flex items-center justify-between">
             <span>Sheet</span>
             <div className="flex items-center gap-0.5">
               {imagePageInfo && imagePageInfo.total > 1 && (
@@ -285,7 +263,7 @@ export default function MoveList({
             </div>
           </div>
         )}
-        <div style={{ width: hasImages ? '20%' : '50%' }} className="px-2 py-1 text-xs text-gray-500 font-medium">Black</div>
+        <div style={{ width: hasImages ? '25%' : '50%' }} className="px-2 py-1 text-xs text-gray-500 font-medium">Black</div>
       </div>
 
       {/* Move position indicator */}
@@ -305,11 +283,11 @@ export default function MoveList({
         {/* Insert before first move */}
         {moves.length > 0 && (
           <div className={`flex items-stretch border-b ${insertingAfterIndex === -1 ? 'border-green-200 bg-green-50' : 'border-gray-50'} ${ROW_HEIGHT}`}>
-            <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5 flex items-center">
+            <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5 flex items-center">
               {renderInsertButton(-1, insertingAfterIndex === -1 ? undefined : 'Insert before first move')}
             </div>
-            {hasImages && <div style={{ width: '60%' }} className="border-x border-gray-100" />}
-            <div style={{ width: hasImages ? '20%' : '50%' }} />
+            {hasImages && <div style={{ width: '50%' }} className="border-x border-gray-100" />}
+            <div style={{ width: hasImages ? '25%' : '50%' }} />
           </div>
         )}
 
@@ -329,7 +307,7 @@ export default function MoveList({
                 className={`flex items-stretch border-b border-gray-100 ${ROW_HEIGHT}`}
               >
                 {/* White cell */}
-                <div style={{ width: hasImages ? '20%' : '50%' }} className="min-w-0 flex items-center gap-0.5 px-1 py-0.5">
+                <div style={{ width: hasImages ? '25%' : '50%' }} className="min-w-0 flex items-center gap-0.5 px-1 py-0.5">
                   <span className="text-[11px] text-gray-400 w-5 flex-shrink-0 font-mono">{pair.moveNumber}.</span>
                   {pair.white ? renderMoveCell(pair.white, isInsertAfterWhite) : <div className="flex-1" />}
                 </div>
@@ -337,13 +315,13 @@ export default function MoveList({
                 {/* Image crop cell */}
                 {hasImages && (
                   <div
-                    style={{ width: '60%', ...(getCropStyle(pair.white?.move.bbox ?? pair.black?.move.bbox, pair.moveNumber) || {}) }}
+                    style={{ width: '50%', ...(getCropStyle(pair.white?.move.bbox ?? pair.black?.move.bbox, pair.moveNumber) || {}) }}
                     className="border-x border-gray-100"
                   />
                 )}
 
                 {/* Black cell */}
-                <div style={{ width: hasImages ? '20%' : '50%' }} className="min-w-0 flex items-center gap-0.5 px-1 py-0.5">
+                <div style={{ width: hasImages ? '25%' : '50%' }} className="min-w-0 flex items-center gap-0.5 px-1 py-0.5">
                   {pair.black && !isInsertAfterWhite ? (
                     renderMoveCell(pair.black, isInsertAfterBlack)
                   ) : isInsertAfterWhite ? (
@@ -355,11 +333,11 @@ export default function MoveList({
               {/* Displaced black indicator when inserting after white */}
               {isInsertAfterWhite && pair.black && (
                 <div className={`flex items-stretch border-b border-gray-100 bg-gray-50 ${ROW_HEIGHT}`}>
-                  <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5 flex items-center">
+                  <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5 flex items-center">
                     <span className="text-xs text-gray-300 italic pl-5">↓</span>
                   </div>
-                  {hasImages && <div style={{ width: '60%' }} className="border-x border-gray-100" />}
-                  <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5 flex items-center">
+                  {hasImages && <div style={{ width: '50%' }} className="border-x border-gray-100" />}
+                  <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5 flex items-center">
                     <span className="text-xs text-gray-400 italic">{pair.black.move.san} (shifts)</span>
                   </div>
                 </div>
@@ -368,9 +346,9 @@ export default function MoveList({
               {/* Insert after black */}
               {isInsertAfterBlack && (
                 <div className={`flex items-stretch border-b border-green-200 bg-green-50 ${ROW_HEIGHT}`}>
-                  <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5" />
-                  {hasImages && <div style={{ width: '60%' }} className="border-x border-gray-100" />}
-                  <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5 flex items-center">
+                  <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5" />
+                  {hasImages && <div style={{ width: '50%' }} className="border-x border-gray-100" />}
+                  <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5 flex items-center">
                     {renderInsertButton(pair.black!.index)}
                   </div>
                 </div>
@@ -382,13 +360,62 @@ export default function MoveList({
         {/* Append at end */}
         {moves.length > 0 && (
           <div className={`flex items-stretch border-b ${insertingAfterIndex === moves.length - 1 ? 'border-green-200 bg-green-50' : ''} ${ROW_HEIGHT}`}>
-            <div style={{ width: hasImages ? '20%' : '50%' }} className="px-1 py-0.5 flex items-center">
+            <div style={{ width: hasImages ? '25%' : '50%' }} className="px-1 py-0.5 flex items-center">
               {renderInsertButton(moves.length - 1, insertingAfterIndex === moves.length - 1 ? undefined : 'Append move at end')}
             </div>
-            {hasImages && <div style={{ width: '60%' }} className="border-x border-gray-100" />}
-            <div style={{ width: hasImages ? '20%' : '50%' }} />
+            {hasImages && <div style={{ width: '50%' }} className="border-x border-gray-100" />}
+            <div style={{ width: hasImages ? '25%' : '50%' }} />
           </div>
         )}
+      </div>
+
+      {/* Legal Moves Panel */}
+      {showLegalMoves && (
+        <div className="border-t border-gray-200 p-2">
+          <LegalMovesPanel
+            legalMoves={legalMoves}
+            currentSan={selectedMove?.san || ''}
+            moveLabel={legalMovesLabel}
+            sideToMove={legalMovesSide}
+            smartSuggestions={smartSuggestions}
+            onSelectMove={onLegalMoveSelect}
+          />
+        </div>
+      )}
+
+      {/* Correction Summary & Error Navigation */}
+      <div className="px-3 py-2 border-t border-gray-200 text-gray-700 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-3 text-[10px] text-gray-500 font-normal">
+            {(() => {
+              const counts = { exact: 0, fuzzy: 0, forced: 0, corrected: 0, invalid: 0, speculative: 0 };
+              for (const m of moves) {
+                if (m.matchType === 'speculative') counts.speculative++;
+                else if (!m.isValid) counts.invalid++;
+                else if (m.matchType === 'corrected') counts.corrected++;
+                else if (m.matchType === 'forced') counts.forced++;
+                else if (m.matchType === 'fuzzy') counts.fuzzy++;
+                else counts.exact++;
+              }
+              return (
+                <>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Exact {counts.exact}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />Fuzzy {counts.fuzzy}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Forced {counts.forced}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Corrected {counts.corrected}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Invalid {counts.invalid}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />Speculative {counts.speculative}</span>
+                </>
+              );
+            })()}
+            <span className="text-gray-400">{moves.filter(m => m.isValid).length}/{moves.length}</span>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="text-[10px] text-gray-400">Jump to issue</span>
+            <button onClick={() => onNavigateToError('prev')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Previous issue">▲</button>
+            <button onClick={() => onNavigateToError('next')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Next issue">▼</button>
+          </div>
+        </div>
       </div>
     </div>
   );

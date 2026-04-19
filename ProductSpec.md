@@ -139,13 +139,12 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 - Navigation controls (⏮ ◀ ▶ ⏭) allow stepping through moves.
   - Skip the "start" step. By default start at 1 move
   - The text in between should show n.(White|Black), with n indication the move number, and White or Black indicating current step is for White or Black.
-- A **Legal Moves Panel** below the board shows all legal moves at the current position, grouped and filterable by piece type (King, Queen, Rook, Bishop, Knight, Pawn). Clicking a legal move corrects/inserts at that position.
 - A **move table** displays all validated moves in a 3-column grid (White | Sheet | Black), with:
   - Moves of white on the left, moves of black on the right, and the pictures sheet in between
     - The white move and the black move of the same move should align to the same row. Between is the piece of the picture on notation sheet, cropped to only the 2 cells of the moves.
     - This grid is scollable, diplaying only 3 moves, with the currently focused step in the middle row, one move before and one move after also visible on screen.
     - This grid auto scroll when the currently focus move changes.
-    - Allocate the width of the grid to 20%, 60%, 20% for White, Sheet, Black, respectively
+    - Allocate the width of the grid to 25%, 50%, 25% for White, Sheet, Black, respectively
     - The cropped image of each row should zoom into the portion of the pictures having the cells for the move.
     - Avoid the two rotate icons on teh header of Sheet column
   - **Color-coded confidence indicators**:
@@ -159,8 +158,9 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
   - **Inline editing**: No inline edit. I will only edit by moving pieces on the board and selecting from Legal Moves list.
   - **Insert move**: a `+` button between moves allows inserting a missing move. The user selects from legal moves at that position.
   - **Delete move**: a `×` button on each move removes it from the sequence.
+- A **Legal Moves Panel** is shown below the move table (not below the board). It shows all legal moves at the current position, grouped and filterable by piece type (King, Queen, Rook, Bishop, Knight, Pawn). Clicking a legal move corrects/inserts at that position.
+- Below the Legal Moves Panel, a **Correction Summary** bar shows legends and counts by category: exact, fuzzy, forced/guess, corrected, invalid, and speculative. **Next/Previous error** buttons (▼▲) jump directly to the next move that needs attention. "Needs attention" is defined as: invalid, forced (uncertain guess), fuzzy, or speculative — but NOT moves already manually corrected.
 - A **PGN preview** panel at the bottom shows the current PGN output in a monospace dark-themed box.
-- Clicking a move in the list switches to the Board tab to show the corresponding position.
 - An **Export PGN** button downloads the `.pgn` file.
 
 #### Game Info Tab
@@ -247,9 +247,8 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - Speculative moves show the raw OCR text so the user can see what the rest of the game looks like before making corrections.
 
 ### Correction Summary & Error Navigation
-- A **summary bar** at the top of the Moves tab shows legends and counts by category: exact, fuzzy, forced/guess, corrected, invalid, and speculative.
-- **Next/Previous error** buttons (▼▲) jump directly to the next move that needs attention. Put a text on the left these button to explain what they do.
-- "Needs attention" is defined as: invalid, forced (uncertain guess), fuzzy, or speculative — but NOT moves already manually corrected.
+- The correction summary and error navigation are integrated at the bottom of the move table (within the Board tab), below the Legal Moves Panel.
+- See the Board Tab section above for details on the summary bar and error navigation buttons.
 
 ### Undo/Redo for Corrections
 - Every correction, insertion, or deletion pushes the previous game state onto an **undo stack**.
@@ -267,7 +266,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - This is an off-image indicator — no unreliable on-image overlay.
 
 ### Smart Suggestions
-- When a move **needs attention** (forced, fuzzy, invalid, or speculative), the **Legal Moves Panel** shows 💡 **suggested moves** pinned at the top.
+- When a move **needs attention** (forced, fuzzy, invalid, or speculative), the **Legal Moves Panel** (below the move table) shows 💡 **suggested moves** pinned at the top.
 - Suggestions are computed by trying each legal move and checking if the **next raw OCR move** can be matched in the resulting position.
 - This helps the user pick the right correction by considering game continuity.
 

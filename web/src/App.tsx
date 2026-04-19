@@ -10,7 +10,6 @@ import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
 import BoardViewer from './components/BoardViewer';
-import LegalMovesPanel from './components/LegalMovesPanel';
 import PerspectiveEditor from './components/PerspectiveEditor';
 import './index.css';
 
@@ -645,22 +644,6 @@ export default function App() {
                     onFlipBoard={() => setBoardFlipped(f => !f)}
                     compact
                   />
-                  {(selectedMove || isInserting) && !isSpeculativeSelected && (
-                    <LegalMovesPanel
-                      legalMoves={legalMovesAtSelected}
-                      currentSan={isInserting ? '' : selectedMove!.san}
-                      moveLabel={legalMovesLabel}
-                      sideToMove={legalMovesSide}
-                      smartSuggestions={smartSuggestions}
-                      onSelectMove={(san) => {
-                        if (isInserting) {
-                          handleInsertMove(insertingAfterIndex!, san);
-                        } else {
-                          handleCorrectMove(gameState.selectedMoveIndex, san);
-                        }
-                      }}
-                    />
-                  )}
                   <div className="w-full">
                     <MoveList
                       moves={gameState.moves}
@@ -681,6 +664,18 @@ export default function App() {
                         onNext: () => setActiveImageIndex(Math.min(gameState.imageUrls.length - 1, activeImageIndex + 1)),
                       } : undefined}
                       selectedMove={selectedMove}
+                      legalMoves={legalMovesAtSelected}
+                      smartSuggestions={smartSuggestions}
+                      legalMovesLabel={legalMovesLabel}
+                      legalMovesSide={legalMovesSide}
+                      showLegalMoves={(selectedMove !== null || isInserting) && !isSpeculativeSelected}
+                      onLegalMoveSelect={(san) => {
+                        if (isInserting) {
+                          handleInsertMove(insertingAfterIndex!, san);
+                        } else {
+                          handleCorrectMove(gameState.selectedMoveIndex, san);
+                        }
+                      }}
                     />
                   </div>
                   <div className="w-full bg-gray-800 text-green-400 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24 overflow-y-auto">
