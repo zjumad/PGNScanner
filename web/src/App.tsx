@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState } from './types';
 import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
-import { recognizeScoreSheet, mergeOcrResults, computeRowBBox } from './services/visionApi';
-import { correctImageOrientation } from './services/imagePreprocess';
+import { recognizeScoreSheet, computeRowBBox } from './services/visionApi';
+import { correctImageOrientation, mergeImages } from './services/imagePreprocess';
 import type { ModelId, GridDescriptor } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
@@ -118,16 +118,21 @@ export default function App() {
           processed.push(await correctImageOrientation(files[i]));
         }
 
-        // OCR each preprocessed image sequentially
-        const ocrResults = [];
-        for (let i = 0; i < processed.length; i++) {
-          setProcessingStatus(`Recognizing image ${i + 1} of ${processed.length}...`);
-          const result = await recognizeScoreSheet(processed[i].base64, processed[i].mimeType, modelId);
-          ocrResults.push(result);
+        // Merge multiple images into one for a single OCR call
+        let ocrImage = processed[0];
+        if (processed.length > 1) {
+          setProcessingStatus('Merging images...');
+          ocrImage = await mergeImages(processed);
         }
 
-        // Merge results from all pages
-        const result = mergeOcrResults(ocrResults);
+        // Single OCR call on the (possibly merged) image
+        setProcessingStatus('Recognizing moves...');
+        const result = await recognizeScoreSheet(ocrImage.base64, ocrImage.mimeType, modelId);
+
+        // Clean up merged image URL if it was created separately
+        if (processed.length > 1) {
+          URL.revokeObjectURL(ocrImage.url);
+        }
         setRawOcrJson(JSON.stringify(result, null, 2));
         if (result.grid) setOcrGrid(result.grid);
 

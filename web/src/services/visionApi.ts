@@ -62,6 +62,7 @@ export interface GridDescriptor {
 const BASE_PROMPT = `You are a chess score sheet OCR system. You read handwritten chess notation from US Chess Official Score Sheets.
 
 SHEET LAYOUT:
+- The image may contain a single score sheet page, or multiple pages merged side by side (e.g., front and back of a 2-sided sheet stitched horizontally into one image). Read ALL pages from left to right.
 - Header fields at top: Event, Date, Round, Board, Section, White, Black, Opening, Pairing No.
 - Move grid: rows split into two (or occasionally three) halves side-by-side. Common layouts:
   - 30 rows × 2 halves (1-30 left, 31-60 right) — US Chess Official, Daisy Paper
