@@ -8,6 +8,7 @@ import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
 import BoardViewer from './components/BoardViewer';
 import ApiKeyDialog from './components/ApiKeyDialog';
+import LegalMovesPanel from './components/LegalMovesPanel';
 import './index.css';
 
 const DEFAULT_HEADER: GameHeader = {
@@ -310,30 +311,13 @@ export default function App() {
 
               {/* Legal moves panel */}
               {selectedMove && (
-                <div className="w-full bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-                  <h3 className="text-sm font-semibold text-gray-600 mb-2">
-                    Legal Moves at {selectedMove.moveNumber}{selectedMove.color === 'w' ? '.' : '...'}
-                    <span className="text-xs font-normal text-gray-400 ml-2">
-                      ({legalMovesAtSelected.length} moves)
-                    </span>
-                  </h3>
-                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-                    {legalMovesAtSelected.map((move) => (
-                      <button
-                        key={move}
-                        className={`px-2 py-0.5 text-xs font-mono rounded border transition-colors ${
-                          move === selectedMove.san
-                            ? 'bg-blue-100 border-blue-400 text-blue-800 font-bold'
-                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-blue-50 hover:border-blue-300'
-                        }`}
-                        onClick={() => handleCorrectMove(gameState.selectedMoveIndex, move)}
-                        title={move === selectedMove.san ? 'Current move' : `Change to ${move}`}
-                      >
-                        {move}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <LegalMovesPanel
+                  legalMoves={legalMovesAtSelected}
+                  currentSan={selectedMove.san}
+                  moveLabel={`${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`}
+                  sideToMove={selectedMove.color}
+                  onSelectMove={(san) => handleCorrectMove(gameState.selectedMoveIndex, san)}
+                />
               )}
 
               <button
