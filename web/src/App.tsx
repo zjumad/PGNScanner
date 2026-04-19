@@ -334,7 +334,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-[1600px] mx-auto px-2 sm:px-4 py-2 sm:py-6">
+      <main className="max-w-[600px] mx-auto px-2 sm:px-4 py-2 sm:py-6">
         {(step === 'upload' || step === 'processing') && (
           <div className="py-6 sm:py-12">
             <ImageUpload onImageSelected={handleImageSelected} isProcessing={isProcessing} />
@@ -343,8 +343,8 @@ export default function App() {
 
         {step === 'review' && (
           <>
-            {/* Mobile tab bar — visible only on small screens */}
-            <div className="flex lg:hidden border-b border-gray-200 bg-white rounded-t-lg mb-2">
+            {/* Tab bar — always visible */}
+            <div className="flex border-b border-gray-200 bg-white rounded-t-lg mb-2">
               {[
                 { id: 'board' as const, label: '♟ Board', icon: '♟' },
                 { id: 'moves' as const, label: '☰ Moves', icon: '☰' },
@@ -364,85 +364,17 @@ export default function App() {
               ))}
             </div>
 
-            {/* Desktop layout: 3-column grid */}
-            <div className="hidden lg:grid lg:grid-cols-[1fr_1fr_auto] gap-6" style={{ maxHeight: 'calc(100vh - 140px)' }}>
-              {/* Left: Original image */}
-              <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
-                  {gameState.imageUrl && (
-                    <img src={gameState.imageUrl} alt="Score sheet" className="w-full rounded-md" />
-                  )}
-                </div>
-              </div>
+            {/* Desktop layout: 3-column grid (hidden — use tab layout toggle in header to restore) */}
+            {/* <div className="hidden lg:grid lg:grid-cols-[1fr_1fr_auto] gap-6" style={{ maxHeight: 'calc(100vh - 140px)' }}>
+              ...
+            </div> */}
 
-              {/* Center: Header + Move list */}
-              <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 140px)' }}>
-                <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
-                <div className="flex-1 min-h-0">
-                  <MoveList
-                    moves={gameState.moves}
-                    selectedIndex={gameState.selectedMoveIndex}
-                    onSelectMove={handleSelectMove}
-                    onCorrectMove={handleCorrectMove}
-                    onInsertMove={handleInsertMove}
-                    onDeleteMove={handleDeleteMove}
-                    insertLegalMoves={insertLegalMoves}
-                    onRequestInsert={handleRequestInsert}
-                    insertingAfterIndex={insertingAfterIndex}
-                    onCancelInsert={handleCancelInsert}
-                  />
-                </div>
-              </div>
-
-              {/* Right: Board + Legal moves + Controls */}
-              <div className="flex flex-col items-center gap-4">
-                <BoardViewer
-                  fen={boardFen}
-                  interactive={selectedMove !== null || isInserting}
-                  legalMoves={legalMovesAtSelected}
-                  onMoveMade={handleBoardMove}
-                />
-                <NavigationControls
-                  isInserting={isInserting}
-                  selectedMove={selectedMove}
-                  onNavigate={handleNavigate}
-                />
-                {(selectedMove || isInserting) && (
-                  <LegalMovesPanel
-                    legalMoves={legalMovesAtSelected}
-                    currentSan={isInserting ? '' : selectedMove!.san}
-                    moveLabel={legalMovesLabel}
-                    sideToMove={legalMovesSide}
-                    onSelectMove={(san) => {
-                      if (isInserting) {
-                        handleInsertMove(insertingAfterIndex!, san);
-                      } else {
-                        handleCorrectMove(gameState.selectedMoveIndex, san);
-                      }
-                    }}
-                  />
-                )}
-                <button
-                  onClick={handleExportPgn}
-                  className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md"
-                >
-                  Export PGN
-                </button>
-                <div className="w-full bg-gray-800 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-32 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap">
-                    {generatePgn(gameState.header, gameState.moves)}
-                  </pre>
-                </div>
-              </div>
-            </div>
-
-            {/* Mobile layout: tabbed single-column */}
-            <div className="lg:hidden">
+            {/* Tabbed single-column layout */}
+            <div>
               {/* Board tab */}
               {mobileTab === 'board' && (
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-full max-w-[400px]">
+                  <div className="w-full max-w-[480px]">
                     <BoardViewer
                       fen={boardFen}
                       interactive={selectedMove !== null || isInserting}
