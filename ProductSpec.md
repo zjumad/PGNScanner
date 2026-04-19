@@ -56,7 +56,10 @@ The app follows this workflow:
 - The user does not have to provide any API Key. This app uses builtin API keys for both providers. The keys are stored in environment variables within the app.
 - The user selects a **vision model** from a dropdown on the upload screen:
   - **Gemini 2.5 Flash** (default) — Google's Gemini API
+  - **Gemini 2.5 Pro** — Google's Gemini API (higher quality, slower)
+  - **Gemini 2.5 Flash Lite** — Google's Gemini API (fastest, cost-efficient)
   - **GPT-4o (GitHub Models)** — OpenAI GPT-4o via GitHub Models inference API
+  - **Claude Sonnet 4.6 (GitHub Models)** — Anthropic Claude via GitHub Models inference API
 - The selected model is persisted in localStorage across sessions.
   
 - The user uploads one or more photos of a US Chess Official Score Sheet by:
@@ -69,7 +72,7 @@ The app follows this workflow:
 
 ### Step 2: Processing
 
-- Each image is sent as base64 to the selected Vision API (**Gemini 2.5 Flash** or **GPT-4o** via GitHub Models) with a detailed system prompt describing the score sheet layout and chess notation rules.
+- Each image is sent as base64 to the selected Vision API with a detailed system prompt describing the score sheet layout and chess notation rules.
 - For **multi-image uploads**, each image is processed sequentially with a progress indicator ("Recognizing image 1 of 2..."). Results are merged by move number — overlapping half-moves keep the higher-confidence version.
 - The API returns a JSON response containing:
   - **Header fields**: Event, Date, Round, White, Black, White Elo, Black Elo, Opening, ECO, Result.
@@ -182,16 +185,17 @@ In the review screen, the following keyboard shortcuts are available (when the a
 
 ## API Configuration
 
-- **Gemini** (default): Uses `gemini-2.5-flash` via REST API. The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
-- **GitHub Models**: Uses `gpt-4o` via GitHub Models inference API at `models.inference.ai.azure.com`. Authenticated with a GitHub Personal Access Token (PAT) stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
+- **Gemini models** (default: `gemini-2.5-flash`): Google's Gemini REST API. Also supports `gemini-2.5-pro` (higher quality) and `gemini-2.5-flash-lite` (fastest/cheapest). The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
+- **GitHub Models** (`gpt-4o`, `claude-sonnet-4-6`): OpenAI GPT-4o and Anthropic Claude Sonnet 4.6 via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
 - Both providers use raw `fetch` calls (no SDK).
 - Temperature is set to 0 for deterministic output. Max output tokens: 16384.
 - No user-facing API key configuration — keys are embedded at build time.
-- The user selects the model on the upload screen; the choice is persisted in localStorage.
+- The user selects the model on the upload screen; the choice is persisted in localStorage (`pgn_scanner_model`).
 - **Per-model prompt optimization**: The system prompt is split into a shared base (chess notation rules, sheet layout, response format) and model-specific grid descriptor instructions:
-  - **Gemini**: Standard grid instructions; Gemini handles spatial localization well.
+  - **Gemini / Claude**: Standard grid instructions; these models handle spatial localization well.
   - **GPT-4o**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common GPT-4o failure of including the header/event info in the grid bounding box.
 - **Grid validation**: The app validates returned grid descriptors before using them (coordinates in [0,1], nonzero dimensions, reasonable row heights, grid starts below header area). Invalid grids are rejected and fall back to per-move bounding boxes.
+- **Grid calibration**: Users can manually recalibrate the grid in the Debug tab by clicking two points (top-left of row 1, bottom-right of last row) on the uploaded image. This overrides the model's grid and recomputes all move bounding boxes.
 
 ## Improvement Features
 

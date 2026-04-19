@@ -2,6 +2,33 @@ import type { GameHeader, RecognizedMove } from '../types';
 
 export type ApiProvider = 'gemini' | 'github';
 
+/** Identifier for each selectable model */
+export type ModelId =
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-pro'
+  | 'gemini-2.5-flash-lite'
+  | 'gpt-4o'
+  | 'claude-sonnet-4-6';
+
+export interface ModelOption {
+  id: ModelId;
+  label: string;
+  provider: ApiProvider;
+  apiModelId: string;
+}
+
+export const MODEL_OPTIONS: ModelOption[] = [
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiModelId: 'gemini-2.5-flash' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', apiModelId: 'gemini-2.5-pro' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', provider: 'gemini', apiModelId: 'gemini-2.5-flash-lite' },
+  { id: 'gpt-4o', label: 'GPT-4o (GitHub)', provider: 'github', apiModelId: 'gpt-4o' },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (GitHub)', provider: 'github', apiModelId: 'anthropic/claude-sonnet-4-6' },
+];
+
+export function getModelOption(modelId: ModelId): ModelOption {
+  return MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
+}
+
 const BUILTIN_GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN as string || '';
 const BUILTIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string || '';
 
@@ -172,8 +199,9 @@ Field definitions:
 
 The bounding boxes must cover ONLY the handwritten notation cells (White + Black columns), NOT the printed move number column.`;
 
-function getSystemPrompt(provider: ApiProvider): string {
-  const gridInstructions = provider === 'gemini' ? GEMINI_GRID_INSTRUCTIONS : GPT4O_GRID_INSTRUCTIONS;
+function getSystemPrompt(modelId: ModelId): string {
+  // GPT-4o needs extra-explicit grid anchoring; others use standard instructions
+  const gridInstructions = modelId === 'gpt-4o' ? GPT4O_GRID_INSTRUCTIONS : GEMINI_GRID_INSTRUCTIONS;
   return BASE_PROMPT + gridInstructions;
 }
 
@@ -438,10 +466,12 @@ function stripToLastCompleteElement(s: string): string {
 async function recognizeWithGemini(
   imageBase64: string,
   apiKey: string,
-  imageType: string
+  imageType: string,
+  modelId: ModelId
 ): Promise<OcrResult> {
+  const model = getModelOption(modelId);
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model.apiModelId}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -449,7 +479,7 @@ async function recognizeWithGemini(
         contents: [
           {
             parts: [
-              { text: getSystemPrompt('gemini') + '\n\nPlease read this chess score sheet and return the moves as JSON.' },
+              { text: getSystemPrompt(modelId) + '\n\nPlease read this chess score sheet and return the moves as JSON.' },
               {
                 inline_data: {
                   mime_type: imageType,
@@ -486,18 +516,20 @@ async function recognizeWithGemini(
 async function recognizeWithGitHub(
   imageBase64: string,
   token: string,
-  imageType: string
+  imageType: string,
+  modelId: ModelId
 ): Promise<OcrResult> {
-  const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+  const model = getModelOption(modelId);
+  const response = await fetch('https://models.github.ai/inference/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: model.apiModelId,
       messages: [
-        { role: 'system', content: getSystemPrompt('github') },
+        { role: 'system', content: getSystemPrompt(modelId) },
         {
           role: 'user',
           content: [
@@ -540,21 +572,22 @@ async function recognizeWithGitHub(
 export async function recognizeScoreSheet(
   imageBase64: string,
   imageType: string = 'image/jpeg',
-  provider: ApiProvider = 'gemini'
+  modelId: ModelId = 'gemini-2.5-flash'
 ): Promise<OcrResult> {
-  switch (provider) {
+  const model = getModelOption(modelId);
+  switch (model.provider) {
     case 'gemini': {
       const key = BUILTIN_GEMINI_KEY;
       if (!key) throw new Error('Gemini API key is not configured. Set VITE_GEMINI_API_KEY in web/.env');
-      return recognizeWithGemini(imageBase64, key, imageType);
+      return recognizeWithGemini(imageBase64, key, imageType, modelId);
     }
     case 'github': {
       const token = BUILTIN_GITHUB_TOKEN;
       if (!token) throw new Error('GitHub token is not configured. Set VITE_GITHUB_TOKEN in web/.env');
-      return recognizeWithGitHub(imageBase64, token, imageType);
+      return recognizeWithGitHub(imageBase64, token, imageType, modelId);
     }
     default:
-      throw new Error(`Unknown API provider: ${provider}`);
+      throw new Error(`Unknown API provider: ${model.provider}`);
   }
 }
 

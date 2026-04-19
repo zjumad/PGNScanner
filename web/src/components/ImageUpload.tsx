@@ -1,8 +1,9 @@
 import { useCallback, useState, useRef } from 'react';
-import type { ApiProvider } from '../services/visionApi';
+import { MODEL_OPTIONS } from '../services/visionApi';
+import type { ModelId } from '../services/visionApi';
 
 interface ImageUploadProps {
-  onImagesSelected: (files: File[], provider: ApiProvider) => void;
+  onImagesSelected: (files: File[], modelId: ModelId) => void;
   isProcessing: boolean;
   processingStatus?: string;
 }
@@ -11,8 +12,8 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
   const [previews, setPreviews] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [provider, setProvider] = useState<ApiProvider>(() => {
-    return (localStorage.getItem('pgn_scanner_provider') as ApiProvider) || 'gemini';
+  const [modelId, setModelId] = useState<ModelId>(() => {
+    return (localStorage.getItem('pgn_scanner_model') as ModelId) || 'gemini-2.5-flash';
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,8 +46,8 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
   );
 
   const handleSubmit = useCallback(() => {
-    if (files.length > 0) onImagesSelected(files, provider);
-  }, [files, onImagesSelected, provider]);
+    if (files.length > 0) onImagesSelected(files, modelId);
+  }, [files, onImagesSelected, modelId]);
 
   return (
     <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
@@ -138,16 +139,17 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
           <div className="flex items-center gap-2 w-full">
             <label className="text-xs text-gray-500 font-medium whitespace-nowrap">Model:</label>
             <select
-              value={provider}
+              value={modelId}
               onChange={(e) => {
-                const p = e.target.value as ApiProvider;
-                setProvider(p);
-                localStorage.setItem('pgn_scanner_provider', p);
+                const m = e.target.value as ModelId;
+                setModelId(m);
+                localStorage.setItem('pgn_scanner_model', m);
               }}
               className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="gemini">Gemini 2.5 Flash</option>
-              <option value="github">GPT-4o (GitHub Models)</option>
+              {MODEL_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div className="flex gap-3 items-center">
