@@ -9,27 +9,92 @@ function generateSanCandidates(raw: string): string[] {
 
   let text = raw.trim();
 
-  // Normalize castling variants
-  text = text.replace(/0-0-0/g, 'O-O-O').replace(/0-0/g, 'O-O');
+  // Normalize castling variants (broad: 0/O/o, with or without hyphens)
+  text = text
+    .replace(/^[oO0]-?[oO0]-?[oO0]$/g, 'O-O-O')
+    .replace(/^[oO0]-?[oO0]$/g, 'O-O');
 
   const candidates = new Set<string>();
   candidates.add(text);
 
-  // Common OCR substitutions
-  const subs: [RegExp, string][] = [
-    [/l/g, '1'], [/1/g, 'l'],
+  // Position-aware substitutions: piece letters (uppercase prefix) vs
+  // file/rank characters (lowercase + digits in the rest of the move).
+  // This avoids destructive global replacements like B→8 that corrupt valid SAN.
+
+  // Piece-letter confusions (only applied to uppercase first char)
+  const pieceConfusions: Record<string, string[]> = {
+    'R': ['K'],       // R ↔ K in handwriting
+    'K': ['R'],
+    'N': ['H', 'M'],  // N ↔ H/M
+    'B': ['D'],       // B ↔ D
+    'Q': ['O', 'G'],  // Q ↔ O/G
+    'D': ['B'],
+    'H': ['N'],
+    'M': ['N'],
+  };
+
+  // File-letter confusions (for lowercase a-h in positions)
+  const fileConfusions: Record<string, string[]> = {
+    'e': ['c'],       // e ↔ c
+    'c': ['e'],
+    'd': ['a', 'cl'],
+    'a': ['d'],
+    'b': ['d', 'h'],  // b ↔ d/h in handwriting
+    'h': ['b'],
+    'f': ['t'],
+    'g': ['q', 'y'],
+    'q': ['g'],
+  };
+
+  // Digit confusions (for rank numbers)
+  const digitConfusions: Record<string, string[]> = {
+    '1': ['l', '7'],
+    '7': ['1'],
+    '5': ['3', 'S'],
+    '3': ['5'],
+    '8': ['B', '6'],
+    '6': ['G', 'b', '8'],
+    '2': ['Z', 'z'],
+    '4': ['9'],
+    '9': ['4', 'g'],
+    '0': ['O'],
+  };
+
+  // General OCR substitutions (safe for any position)
+  const globalSubs: [RegExp, string][] = [
+    [/l/g, '1'], [/I/g, '1'],
     [/O/g, '0'], [/0/g, 'O'],
-    [/I/g, '1'], [/S/g, '5'],
-    [/B/g, '8'], [/g/g, '9'],
-    [/q/g, 'g'], [/G/g, '6'],
+    [/S/g, '5'],
     [/Z/g, '2'], [/z/g, '2'],
-    [/b/g, '6'], // 'b' confused with 6
   ];
 
-  // Generate single-substitution variants
-  for (const [pattern, replacement] of subs) {
+  // Generate single global-substitution variants
+  for (const [pattern, replacement] of globalSubs) {
     if (pattern.test(text)) {
       candidates.add(text.replace(pattern, replacement));
+    }
+  }
+
+  // Position-aware substitutions: try swapping first char if it looks like a piece
+  if (text.length >= 2 && /^[A-Z]/.test(text)) {
+    const piece = text[0];
+    const rest = text.slice(1);
+    const alts = pieceConfusions[piece];
+    if (alts) {
+      for (const alt of alts) {
+        candidates.add(alt + rest);
+      }
+    }
+  }
+
+  // Try file and digit confusions at each character position
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const fileSubs = fileConfusions[ch];
+    const digitSubs = digitConfusions[ch];
+    const subs = [...(fileSubs || []), ...(digitSubs || [])];
+    for (const sub of subs) {
+      candidates.add(text.slice(0, i) + sub + text.slice(i + 1));
     }
   }
 
@@ -41,7 +106,6 @@ function generateSanCandidates(raw: string): string[] {
 
   // Try adding 'x' for captures (common to omit)
   if (stripped.length >= 3 && !stripped.includes('x')) {
-    // Try inserting 'x' at various positions
     for (let i = 1; i < stripped.length; i++) {
       candidates.add(stripped.slice(0, i) + 'x' + stripped.slice(i));
     }
@@ -52,10 +116,21 @@ function generateSanCandidates(raw: string): string[] {
     candidates.add(text.replace('x', ''));
   }
 
-  // Handle pawn promotions: e.g., "e8Q" or "e8=Q"
-  const promoMatch = stripped.match(/^([a-h][18])([QRBN])$/);
+  // Handle pawn promotions: e.g., "e8Q", "e8=Q", "e8(Q)"
+  const promoMatch = stripped.match(/^([a-h][18])[=()]?([QRBN])[)]?$/);
   if (promoMatch) {
     candidates.add(`${promoMatch[1]}=${promoMatch[2]}`);
+    candidates.add(`${promoMatch[1]}${promoMatch[2]}`);
+  }
+
+  // Handle disambiguation: if OCR misread a disambiguating piece move,
+  // try removing one character from between piece and destination
+  // e.g., "Nge2" might be read as "Nye2" — covered by file confusions above
+  // Also try removing disambiguation entirely for ambiguous reads
+  const disambigMatch = stripped.match(/^([KQRBN])([a-h1-8])(x?)([a-h][1-8])$/);
+  if (disambigMatch) {
+    // Try without disambiguation
+    candidates.add(`${disambigMatch[1]}${disambigMatch[3]}${disambigMatch[4]}`);
   }
 
   return Array.from(candidates);
