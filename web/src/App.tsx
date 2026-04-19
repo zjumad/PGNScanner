@@ -692,8 +692,8 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
   const [anchor1, setAnchor1] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Number of visible grids (1 or 2)
-  const gridCount = grid && grid.rightHalf.width > 0 ? 2 : 1;
+  // Number of visible grids (1, 2, or 3)
+  const gridCount = !grid ? 1 : grid.thirdHalf && grid.thirdHalf.width > 0 ? 3 : grid.rightHalf.width > 0 ? 2 : 1;
 
   const getNormalizedCoords = useCallback((e: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement>) => {
     const el = containerRef.current;
@@ -751,39 +751,47 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
   // Update grid count
   const setGridCount = useCallback((count: number) => {
     if (!grid) return;
+    const makeHalf = (xOffset: number) => ({
+      x: grid.leftHalf.x + xOffset,
+      y: grid.leftHalf.y,
+      width: grid.leftHalf.width,
+      height: grid.leftHalf.height,
+      rows: grid.leftHalf.rows,
+    });
+    const zeroHalf = { x: 0, y: 0, width: 0, height: 0, rows: grid.leftHalf.rows };
     if (count === 1) {
+      onGridCalibrate({ ...grid, rightHalf: zeroHalf, thirdHalf: undefined });
+    } else if (count === 2) {
       onGridCalibrate({
         ...grid,
-        rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: grid.leftHalf.rows },
+        rightHalf: grid.rightHalf.width > 0 ? grid.rightHalf : makeHalf(grid.leftHalf.width + 0.05),
+        thirdHalf: undefined,
       });
-    } else if (count === 2 && grid.rightHalf.width === 0) {
-      // Create a sensible default right half: same height, placed to the right
+    } else if (count === 3) {
+      const gap = grid.leftHalf.width + 0.03;
       onGridCalibrate({
         ...grid,
-        rightHalf: {
-          x: grid.leftHalf.x + grid.leftHalf.width + 0.05,
-          y: grid.leftHalf.y,
-          width: grid.leftHalf.width,
-          height: grid.leftHalf.height,
-          rows: grid.leftHalf.rows,
-        },
+        rightHalf: grid.rightHalf.width > 0 ? grid.rightHalf : makeHalf(gap),
+        thirdHalf: grid.thirdHalf && grid.thirdHalf.width > 0 ? grid.thirdHalf : makeHalf(gap * 2),
       });
     }
   }, [grid, onGridCalibrate]);
 
   // Update rows for a half
-  const setHalfRows = useCallback((half: 'left' | 'right', rows: number) => {
+  const setHalfRows = useCallback((half: 'left' | 'right' | 'third', rows: number) => {
     if (!grid) return;
     const clamped = Math.max(1, Math.min(60, rows));
     if (half === 'left') {
       onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, rows: clamped } });
-    } else {
+    } else if (half === 'right') {
       onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, rows: clamped } });
+    } else {
+      onGridCalibrate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), rows: clamped } });
     }
   }, [grid, onGridCalibrate]);
 
   // Commit a rectangle update from drag/resize
-  const handleRectUpdate = useCallback((half: 'left' | 'right', updated: { x: number; y: number; width: number; height: number }) => {
+  const handleRectUpdate = useCallback((half: 'left' | 'right' | 'third', updated: { x: number; y: number; width: number; height: number }) => {
     if (!grid) return;
     const clamped = {
       x: Math.max(0, Math.min(1, updated.x)),
@@ -793,8 +801,10 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
     };
     if (half === 'left') {
       onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, ...clamped } });
-    } else {
+    } else if (half === 'right') {
       onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, ...clamped } });
+    } else {
+      onGridCalibrate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), ...clamped } });
     }
   }, [grid, onGridCalibrate]);
 
@@ -834,6 +844,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             >
               <option value={1}>1</option>
               <option value={2}>2</option>
+              <option value={3}>3</option>
             </select>
           </label>
           <label className="flex items-center gap-1">
@@ -847,13 +858,26 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
               className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-14 bg-white"
             />
           </label>
-          {gridCount === 2 && (
+          {gridCount >= 2 && (
             <label className="flex items-center gap-1">
               <span className="text-blue-600">Grid 2 rows:</span>
               <input
                 type="number"
                 value={grid.rightHalf.rows}
                 onChange={(e) => setHalfRows('right', Number(e.target.value))}
+                min={1}
+                max={60}
+                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-14 bg-white"
+              />
+            </label>
+          )}
+          {gridCount >= 3 && grid.thirdHalf && (
+            <label className="flex items-center gap-1">
+              <span className="text-green-600">Grid 3 rows:</span>
+              <input
+                type="number"
+                value={grid.thirdHalf.rows}
+                onChange={(e) => setHalfRows('third', Number(e.target.value))}
                 min={1}
                 max={60}
                 className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-14 bg-white"
@@ -890,6 +914,16 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             disabled={calibrating}
           />
         )}
+        {grid && grid.thirdHalf && grid.thirdHalf.width > 0 && (
+          <DraggableRect
+            half={grid.thirdHalf}
+            color="green"
+            label={`Grid 3 (${grid.leftHalf.rows + grid.rightHalf.rows + 1}-${grid.leftHalf.rows + grid.rightHalf.rows + grid.thirdHalf.rows})`}
+            containerRef={containerRef}
+            onUpdate={(rect) => handleRectUpdate('third', rect)}
+            disabled={calibrating}
+          />
+        )}
         {/* Calibration anchor point */}
         {calibrating && anchor1 && (
           <div
@@ -905,7 +939,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
 /** Draggable and resizable rectangle overlay for grid halves */
 function DraggableRect({ half, color, label, containerRef, onUpdate, disabled }: {
   half: { x: number; y: number; width: number; height: number };
-  color: 'red' | 'blue';
+  color: 'red' | 'blue' | 'green';
   label: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onUpdate: (rect: { x: number; y: number; width: number; height: number }) => void;
@@ -1025,9 +1059,9 @@ function DraggableRect({ half, color, label, containerRef, onUpdate, disabled }:
     setLocalRect(null);
   }, [dragState, localRect, onUpdate]);
 
-  const borderColor = color === 'red' ? 'border-red-500' : 'border-blue-500';
-  const bgColor = color === 'red' ? 'bg-red-500/10' : 'bg-blue-500/10';
-  const textColor = color === 'red' ? 'text-red-600' : 'text-blue-600';
+  const borderColor = color === 'red' ? 'border-red-500' : color === 'blue' ? 'border-blue-500' : 'border-green-500';
+  const bgColor = color === 'red' ? 'bg-red-500/10' : color === 'blue' ? 'bg-blue-500/10' : 'bg-green-500/10';
+  const textColor = color === 'red' ? 'text-red-600' : color === 'blue' ? 'text-blue-600' : 'text-green-600';
 
   return (
     <div

@@ -56,6 +56,7 @@ export interface GridDescriptor {
   rotation: 0 | 90 | 180 | 270;
   leftHalf: GridHalf;
   rightHalf: GridHalf;
+  thirdHalf?: GridHalf;
 }
 
 // Base prompt shared by all models — chess notation rules, sheet layout, response format
@@ -96,7 +97,7 @@ COMMON HANDWRITING CONFUSIONS TO WATCH FOR:
 
 IMPORTANT:
 - Read EVERY move that is actually written. Do not skip or invent moves.
-- READ BOTH GRID HALVES: After reading all moves from the LEFT grid, CONTINUE reading moves from the RIGHT grid. The right grid contains the continuation of the game (e.g., moves 26-50 or 31-60). Do NOT stop after the left grid.
+- READ ALL GRID SECTIONS: The sheet may have 2 or 3 grid halves side by side. After reading all moves from the first (left) grid, CONTINUE reading moves from the second grid, and then the third grid if present. Do NOT stop after the first grid.
 - If a move is crossed out or truly illegible, put "?" as the move.
 - Pay careful attention to similar-looking letters. When in doubt, consider which reading produces a valid chess move.
 - The result should be "1-0" for White Won, "0-1" for Black Won, "1/2-1/2" for Draw, or "*" if unclear.
@@ -139,7 +140,7 @@ Return your response as a JSON object with this exact structure:
       "whiteConfidence": "high", "blackConfidence": "high"
     },
     { "moveNumber": 2, "whiteMove": "Nf3", "blackMove": "Nc6", "whiteConfidence": "high", "blackConfidence": "high" },
-    "... (continue through ALL moves in the left grid AND the right grid)"
+    "... (continue through ALL moves in ALL grid sections — left, right, and third if present)"
   ]
 }
 
@@ -147,13 +148,14 @@ GRID DESCRIPTOR INSTRUCTIONS:
 You MUST provide a "grid" object describing the move table layout in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
 
 - "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. The coordinates below are relative to the image AS-IS (before rotation).
-- "leftHalf": Bounding box of the LEFT (first) move grid.
+- "leftHalf": Bounding box of the FIRST (leftmost) move grid.
   - "x": left edge of the White notation column (excluding printed move numbers)
   - "y": top edge of row 1 (the FIRST move row, NOT the header area)
   - "width": width from left edge of White column to right edge of Black column
   - "height": total height from top of the first row to bottom of the LAST printed row (cover ALL rows, even empty ones)
   - "rows": the actual number of printed rows in this half (COUNT them — common values: 20, 25, or 30)
-- "rightHalf": Same as leftHalf but for the next grid section. If no right half exists, set all values to 0.
+- "rightHalf": Same as leftHalf but for the SECOND grid section. If no second grid exists, set all values to 0.
+- "thirdHalf" (optional): Same structure for a THIRD grid section, if present (e.g., 20-row × 3-column sheets). Omit if only 2 grids.
 
 The bounding boxes should cover ONLY the notation cells (White + Black columns), NOT the printed move number column.`;
 
@@ -186,7 +188,7 @@ Return your response as a JSON object with this exact structure:
       "whiteConfidence": "high", "blackConfidence": "high"
     },
     { "moveNumber": 2, "whiteMove": "Nf3", "blackMove": "Nc6", "whiteConfidence": "high", "blackConfidence": "high" },
-    "... (continue through ALL moves in the left grid AND the right grid)"
+    "... (continue through ALL moves in ALL grid sections — left, right, and third if present)"
   ]
 }
 
@@ -203,18 +205,19 @@ SELF-CHECK before returning: Verify that leftHalf.y points to the row containing
 
 Field definitions:
 - "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. Coordinates are relative to the image AS-IS (before rotation).
-- "leftHalf": Bounding box of the LEFT (first) move grid.
+- "leftHalf": Bounding box of the FIRST (leftmost) move grid.
   - "x": left edge of the White notation column (EXCLUDE the printed move number column on the left)
   - "y": top edge of ROW 1 — the first row with a printed move number "1". NOT the header. NOT the column labels.
   - "width": from left edge of White column to right edge of Black column
   - "height": from top of the first row to bottom of the LAST printed row — cover ALL rows, even if some are empty
   - "rows": the actual number of printed rows in this half (COUNT them — typically 20, 25, or 30, NOT always 30)
-- "rightHalf": Same structure for the next grid section. If unused, set all numeric values to 0.
+- "rightHalf": Same structure for the SECOND grid section. If unused, set all numeric values to 0.
+- "thirdHalf" (optional): Same structure for a THIRD grid section, if present (e.g., 20-row × 3-column sheets). Omit if only 2 grids.
 
 CRITICAL — "rows" must be COUNTED, not assumed:
 - Some sheets have 30 rows per half (1-30 and 31-60)
 - Many sheets have 25 rows per half (1-25 and 26-50)
-- Some have 20 rows per half
+- Some have 20 rows × 3 grids (1-20, 21-40, 41-60)
 - Count the actual printed row numbers to determine the correct value.
 
 The bounding boxes must cover ONLY the handwritten notation cells (White + Black columns), NOT the printed move number column.`;
@@ -280,15 +283,16 @@ function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
   const leftHalf = parseHalf(g.leftHalf);
   if (!leftHalf) return undefined;
   const rightHalf = parseHalf(g.rightHalf) || { x: 0, y: 0, width: 0, height: 0, rows: leftHalf.rows };
+  const thirdHalf = parseHalf(g.thirdHalf) || undefined;
 
   // Sanity checks — reject obviously bad grids
   if (!validateGridHalf(leftHalf)) return undefined;
   if (rightHalf.width > 0 && !validateGridHalf(rightHalf)) {
-    // Right half is bad but left is ok — zero out right half
     return { rotation, leftHalf, rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: leftHalf.rows } };
   }
+  const validThird = thirdHalf && thirdHalf.width > 0 && validateGridHalf(thirdHalf) ? thirdHalf : undefined;
 
-  return { rotation, leftHalf, rightHalf };
+  return { rotation, leftHalf, rightHalf, ...(validThird ? { thirdHalf: validThird } : {}) };
 }
 
 /** Validate a grid half has reasonable normalized values */
@@ -310,16 +314,27 @@ function validateGridHalf(half: GridHalf): boolean {
 }
 
 export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
-  const totalRows = grid.leftHalf.rows + (grid.rightHalf.width > 0 ? grid.rightHalf.rows : 0);
-  // Guard: if move is beyond total grid capacity, return a zero bbox
+  const leftRows = grid.leftHalf.rows;
+  const rightRows = grid.rightHalf.width > 0 ? grid.rightHalf.rows : 0;
+  const thirdRows = grid.thirdHalf && grid.thirdHalf.width > 0 ? grid.thirdHalf.rows : 0;
+  const totalRows = leftRows + rightRows + thirdRows;
+
   if (moveNumber > totalRows || moveNumber < 1) {
     return { bbox: { x: 0, y: 0, width: 0, height: 0 }, rotation: grid.rotation };
   }
 
-  const half = moveNumber <= grid.leftHalf.rows ? grid.leftHalf : grid.rightHalf;
-  const rowIndex = moveNumber <= grid.leftHalf.rows
-    ? moveNumber - 1
-    : moveNumber - grid.leftHalf.rows - 1;
+  let half: GridHalf;
+  let rowIndex: number;
+  if (moveNumber <= leftRows) {
+    half = grid.leftHalf;
+    rowIndex = moveNumber - 1;
+  } else if (moveNumber <= leftRows + rightRows) {
+    half = grid.rightHalf;
+    rowIndex = moveNumber - leftRows - 1;
+  } else {
+    half = grid.thirdHalf!;
+    rowIndex = moveNumber - leftRows - rightRows - 1;
+  }
   const rowHeight = half.height / half.rows;
 
   return {
