@@ -182,6 +182,7 @@ export default function App() {
 
   const handleSelectMove = useCallback((index: number) => {
     setGameState((prev) => ({ ...prev, selectedMoveIndex: index }));
+    setMobileTab('board');
   }, []);
 
   const handleCorrectMove = useCallback((index: number, newSan: string) => {

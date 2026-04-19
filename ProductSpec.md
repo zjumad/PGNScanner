@@ -149,8 +149,14 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 - An **Export PGN** button downloads the `.pgn` file.
 
 #### Debug Info tab
-- show the text of OCR output
-- show the pictures as uploaded
+- Shows the raw OCR JSON output in a scrollable text area.
+- Displays the uploaded image(s) with:
+  - **Coordinate readout**: Shows the X:Y position (normalized 0–1) of the cursor when hovering over the image.
+  - **Grid overlay**: Colored rectangles showing the detected grid bounding boxes (red = left grid, blue = right grid, green = third grid if present).
+  - **Draggable/resizable rectangles**: The grid overlay rectangles can be dragged and resized to manually adjust grid coordinates.
+  - **Grid controls**: Inputs for number of grids (1/2/3) and rows per grid.
+  - **Calibration mode**: Click two points on the image (top-left of row 1, bottom-right of last row) to set the left grid bounding box.
+- Changes to grid rectangles immediately recompute all move bounding boxes for the Sheet column crops.
 
 ## Move Validation Engine
 
@@ -169,21 +175,6 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 
 ### Step 4: Export
 Users is able to export the result as PGN files. 
-
-## Move Validation Engine
-
-- All move legality is determined by **chess.js**. The app never manually validates chess rules.
-- OCR text is matched to legal moves using a multi-step process:
-  1. **Candidate generation** (`generateSanCandidates`): Produces many SAN variants from common handwriting confusions (e.g., `N↔H/M`, `B↔D`, `e↔c`, `1↔l/7`, castling normalization `0-0→O-O`, capture `x` insertion/removal, promotion normalization).
-  2. **Similarity scoring**: Each candidate is compared to each legal move using Levenshtein distance. The best scoring legal move is chosen.
-  3. **Confidence thresholds**:
-     - Exact match (score = 1.0 or case-insensitive = 0.95) → **high** confidence.
-     - Score ≥ 0.8 → **medium** confidence.
-     - Score ≥ 0.5 → **low** confidence.
-     - Below 0.5 with force-match → **low** (forced guess).
-- **Validation stops at the first invalid move.** If a move cannot be matched to any legal move, the chain breaks. The user must correct it before subsequent moves can validate.
-- **Corrections** trigger full revalidation: when the user corrects a move at index N, the entire game is replayed from move 1 using the original raw OCR text for all moves except the corrected one. This ensures all subsequent moves re-validate against the updated position.
-- **Insert** and **Delete** also trigger full revalidation with recalculated move numbers and colors.
 
 ## PGN Export
 
@@ -217,7 +208,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
   -  The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
 - **GitHub Models** (`gpt-5`, `gpt-5-mini`): OpenAI GPT-5 and GPT-5 Mini via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
 - Both providers use raw `fetch` calls (no SDK).
-- Temperature is set to 0 for deterministic output. Max output tokens: 16384.
+- Temperature is set to 0 for deterministic output. Max output tokens: 16384 (Gemini), 32768 (GPT-5 family via `max_completion_tokens`).
 - No user-facing API key configuration — keys are embedded at build time.
 - The user selects the model on the upload screen; the choice is persisted in localStorage (`pgn_scanner_model`).
 - If the selected model is not working due to rate limit, automatically try with the next model available on the list
