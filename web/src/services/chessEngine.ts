@@ -28,9 +28,11 @@ function generateSanCandidates(raw: string): string[] {
     'N': ['H', 'M'],  // N ↔ H/M
     'B': ['D'],       // B ↔ D
     'Q': ['O', 'G'],  // Q ↔ O/G
+    'O': ['Q'],       // O misread as piece → probably Q
     'D': ['B'],
     'H': ['N'],
     'M': ['N'],
+    'G': ['Q'],
   };
 
   // File-letter confusions (for lowercase a-h in positions)
@@ -44,6 +46,7 @@ function generateSanCandidates(raw: string): string[] {
     'f': ['t'],
     'g': ['q', 'y'],
     'q': ['g'],
+    'y': ['g'],       // y misread → probably g
   };
 
   // Digit confusions (for rank numbers)
@@ -53,6 +56,7 @@ function generateSanCandidates(raw: string): string[] {
     '5': ['3', 'S'],
     '3': ['5'],
     '8': ['B', '6'],
+    'B': ['8'],       // uppercase B in digit position → probably 8
     '6': ['G', 'b', '8'],
     '2': ['Z', 'z'],
     '4': ['9'],
@@ -117,20 +121,50 @@ function generateSanCandidates(raw: string): string[] {
   }
 
   // Handle pawn promotions: e.g., "e8Q", "e8=Q", "e8(Q)"
-  const promoMatch = stripped.match(/^([a-h][18])[=()]?([QRBN])[)]?$/);
+  const promoMatch = stripped.match(/^([a-h][18])[=()]?([QRBNOGD])[)]?$/);
   if (promoMatch) {
-    candidates.add(`${promoMatch[1]}=${promoMatch[2]}`);
-    candidates.add(`${promoMatch[1]}${promoMatch[2]}`);
+    const sq = promoMatch[1];
+    const pieceLetter = promoMatch[2];
+    // Try the literal piece and its confusions
+    const promoPieces = [pieceLetter, ...(pieceConfusions[pieceLetter] || [])];
+    for (const p of promoPieces) {
+      if ('QRBN'.includes(p)) {
+        candidates.add(`${sq}=${p}`);
+        candidates.add(`${sq}${p}`);
+      }
+    }
   }
 
   // Handle disambiguation: if OCR misread a disambiguating piece move,
-  // try removing one character from between piece and destination
-  // e.g., "Nge2" might be read as "Nye2" — covered by file confusions above
-  // Also try removing disambiguation entirely for ambiguous reads
+  // try substituting the disambiguation char AND removing it entirely
   const disambigMatch = stripped.match(/^([KQRBN])([a-h1-8])(x?)([a-h][1-8])$/);
   if (disambigMatch) {
+    const [, piece, disambig, capture, dest] = disambigMatch;
     // Try without disambiguation
-    candidates.add(`${disambigMatch[1]}${disambigMatch[3]}${disambigMatch[4]}`);
+    candidates.add(`${piece}${capture}${dest}`);
+    // Try file confusions on the disambiguation character
+    const disambigSubs = [...(fileConfusions[disambig] || []), ...(digitConfusions[disambig] || [])];
+    for (const sub of disambigSubs) {
+      candidates.add(`${piece}${sub}${capture}${dest}`);
+    }
+  }
+
+  // Pairwise substitutions: try piece + one position swap for short moves
+  // This catches cases like "Ke2" when the real move is "Rc2" (both piece AND file wrong)
+  if (text.length >= 3 && /^[A-Z]/.test(text)) {
+    const piece = text[0];
+    const rest = text.slice(1);
+    const pieceAlts = pieceConfusions[piece] || [];
+    for (const altPiece of pieceAlts) {
+      // For each piece alt, also try file/digit subs on remaining chars
+      for (let i = 0; i < rest.length; i++) {
+        const ch = rest[i];
+        const subs = [...(fileConfusions[ch] || []), ...(digitConfusions[ch] || [])];
+        for (const sub of subs) {
+          candidates.add(altPiece + rest.slice(0, i) + sub + rest.slice(i + 1));
+        }
+      }
+    }
   }
 
   return Array.from(candidates);

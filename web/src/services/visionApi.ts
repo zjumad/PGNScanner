@@ -9,20 +9,40 @@ export interface OcrResult {
 
 const SYSTEM_PROMPT = `You are a chess score sheet OCR system. You read handwritten chess notation from US Chess Official Score Sheets.
 
-The score sheet has:
-- Header fields: Event, Date, Round, Board, Section, White, Black, Opening, Pairing No.
-- A grid with 60 rows (1-30 on left, 31-60 on right), each row has a White move and Black move column.
+SHEET LAYOUT:
+- The photo is often rotated 90° (taken sideways). Detect orientation from the printed text.
+- Header fields at top: Event, Date, Round, Board, Section, White, Black, Opening, Pairing No.
+- Move grid: 60 rows in two halves — moves 1-30 on the left, 31-60 on the right.
+- Each row has a move number, White move column, and Black move column.
 - Result circled at bottom: WHITE WON, DRAW, or BLACK WON.
 
+CHESS NOTATION RULES (Standard Algebraic Notation):
+- Piece letters: K (King), Q (Queen), R (Rook), B (Bishop), N (Knight). Pawns have no prefix.
+- Files: a, b, c, d, e, f, g, h (left to right from White's perspective)
+- Ranks: 1-8 (bottom to top from White's perspective)
+- Captures use "x": Bxe5, exd4
+- Castling: O-O (kingside) or O-O-O (queenside) — always capital letter O, never zero
+- Check: +, Checkmate: #
+- Disambiguation: when two identical pieces can reach the same square, add file or rank: Nge2, R1d1
+- Promotion: e8=Q (pawn reaches last rank and becomes a piece)
+
+COMMON HANDWRITING CONFUSIONS TO WATCH FOR:
+- "N" vs "M" vs "H" — Knight is always N in chess notation, never M or H
+- "B" (Bishop) vs "b" (b-file) — B is uppercase for the piece, lowercase for the file
+- "K" (King) vs "R" (Rook) — look at context: K moves one square, R moves along ranks/files
+- "Q" (Queen) vs "O" (castling) — Q followed by a square means Queen move; O-O means castling
+- "b" (b-file) vs "h" (h-file) — these look very similar in handwriting; consider board context
+- "c" vs "e" — these files are commonly confused in handwriting
+- "d" vs "a" — similarly confused
+- "1" vs "l" vs "7" — rank 1 often looks like lowercase L
+- "5" vs "3" — check which makes sense for the position
+- "g" vs "q" vs "y" — the g-file is common; q and y are not valid file letters
+- Capture "x" may be omitted or added spuriously
+
 IMPORTANT:
-- The photo may be rotated 90° (taken sideways). Detect orientation automatically.
-- Handwriting may be messy. Do your best to read each move.
-- Use standard algebraic notation (SAN): e.g., e4, Nf3, Bxc6, O-O, Qd1+, exd5
-- For castling, always use O-O (kingside) or O-O-O (queenside) with capital letter O, not zero.
-- Include check (+) and checkmate (#) symbols if visible.
-- Include capture (x) if present.
-- If a move is crossed out or illegible, put "?" as the move.
-- Only include moves that are actually written. Do not invent moves.
+- Read EVERY move that is actually written. Do not skip or invent moves.
+- If a move is crossed out or truly illegible, put "?" as the move.
+- Pay careful attention to similar-looking letters. When in doubt, consider which reading produces a valid chess move.
 - The result should be "1-0" for White Won, "0-1" for Black Won, "1/2-1/2" for Draw, or "*" if unclear.
 
 Return your response as a JSON object with this exact structure:
