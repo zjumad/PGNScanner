@@ -290,12 +290,6 @@ export default function MoveList({
                   <button onClick={imagePageInfo.onNext} disabled={imagePageInfo.current >= imagePageInfo.total - 1} className="p-0.5 rounded hover:bg-gray-200 text-gray-500 text-[10px] disabled:opacity-30" title="Next page">▶</button>
                 </>
               )}
-              {imagePageInfo && (
-                <>
-                  <button onClick={imagePageInfo.onRotateCCW} className="p-0.5 rounded hover:bg-gray-200 text-gray-500 text-[10px]" title="Rotate CCW">↺</button>
-                  <button onClick={imagePageInfo.onRotateCW} className="p-0.5 rounded hover:bg-gray-200 text-gray-500 text-[10px]" title="Rotate CW">↻</button>
-                </>
-              )}
             </div>
           </div>
         )}

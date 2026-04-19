@@ -5,7 +5,8 @@ export type ApiProvider = 'gemini' | 'github';
 /** Identifier for each selectable model */
 export type ModelId =
   | 'gemini-2.5-flash'
-  | 'gemini-2.5-pro'
+  | 'gemini-3-flash'
+  | 'gemini-3.1-flash-lite'
   | 'gemini-2.5-flash-lite'
   | 'gpt-4o'
   | 'claude-sonnet-4-6';
@@ -19,14 +20,19 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiModelId: 'gemini-2.5-flash' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', apiModelId: 'gemini-2.5-pro' },
+  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', apiModelId: 'gemini-3-flash' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', provider: 'gemini', apiModelId: 'gemini-3.1-flash-lite' },
   { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', provider: 'gemini', apiModelId: 'gemini-2.5-flash-lite' },
-  { id: 'gpt-4o', label: 'GPT-4o (GitHub)', provider: 'github', apiModelId: 'gpt-4o' },
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (GitHub)', provider: 'github', apiModelId: 'anthropic/claude-sonnet-4-6' },
+  { id: 'gpt-4o', label: 'GPT-4o (GitHub)', provider: 'github', apiModelId: 'gpt-4o' },
 ];
 
 export function getModelOption(modelId: ModelId): ModelOption {
   return MODEL_OPTIONS.find(m => m.id === modelId) || MODEL_OPTIONS[0];
+}
+
+interface RateLimitError extends Error {
+  isRateLimit?: boolean;
 }
 
 const BUILTIN_GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN as string || '';
@@ -500,7 +506,9 @@ async function recognizeWithGemini(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     const msg = (error as { error?: { message?: string } }).error?.message || response.statusText;
-    throw new Error(`Gemini API error: ${response.status} - ${msg}`);
+    const err = new Error(`Gemini API error: ${response.status} - ${msg}`);
+    (err as RateLimitError).isRateLimit = response.status === 429;
+    throw err;
   }
 
   const data = await response.json();
@@ -554,9 +562,10 @@ async function recognizeWithGitHub(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(
-      `GitHub Models API error: ${response.status} - ${(error as { error?: { message?: string } }).error?.message || response.statusText}`
-    );
+    const msg = (error as { error?: { message?: string } }).error?.message || response.statusText;
+    const err = new Error(`GitHub Models API error: ${response.status} - ${msg}`);
+    (err as RateLimitError).isRateLimit = response.status === 429;
+    throw err;
   }
 
   const data = await response.json();
@@ -569,10 +578,43 @@ async function recognizeWithGitHub(
   return parseOcrResponse(content);
 }
 
+/**
+ * Recognize a score sheet image. On rate limit (429), automatically
+ * falls through to the next model in MODEL_OPTIONS order.
+ */
 export async function recognizeScoreSheet(
   imageBase64: string,
   imageType: string = 'image/jpeg',
   modelId: ModelId = 'gemini-2.5-flash'
+): Promise<OcrResult> {
+  // Build fallback order: start at selected model, then remaining models in list order
+  const startIndex = MODEL_OPTIONS.findIndex(m => m.id === modelId);
+  const fallbackOrder = [
+    ...MODEL_OPTIONS.slice(startIndex >= 0 ? startIndex : 0),
+    ...MODEL_OPTIONS.slice(0, startIndex >= 0 ? startIndex : 0),
+  ];
+
+  let lastError: Error | null = null;
+  for (const modelOption of fallbackOrder) {
+    try {
+      return await callModel(imageBase64, imageType, modelOption.id);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if ((lastError as RateLimitError).isRateLimit) {
+        console.warn(`Rate limited on ${modelOption.label}, trying next model...`);
+        continue;
+      }
+      // Non-rate-limit errors: don't auto-switch
+      throw lastError;
+    }
+  }
+  throw lastError || new Error('All models failed due to rate limits');
+}
+
+async function callModel(
+  imageBase64: string,
+  imageType: string,
+  modelId: ModelId
 ): Promise<OcrResult> {
   const model = getModelOption(modelId);
   switch (model.provider) {
