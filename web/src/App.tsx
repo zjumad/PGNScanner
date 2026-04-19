@@ -2,13 +2,16 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState } from './types';
 import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
 import { recognizeScoreSheet, computeRowBBox } from './services/visionApi';
-import { correctImageOrientation, mergeImages } from './services/imagePreprocess';
+import { correctImageOrientation, mergeImages, applyPerspectiveWarp } from './services/imagePreprocess';
+import type { ProcessedImage } from './services/imagePreprocess';
+import type { Point2D } from './services/perspectiveTransform';
 import type { ModelId, GridDescriptor } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
 import BoardViewer from './components/BoardViewer';
 import LegalMovesPanel from './components/LegalMovesPanel';
+import PerspectiveEditor from './components/PerspectiveEditor';
 import './index.css';
 
 const DEFAULT_HEADER: GameHeader = {
@@ -36,6 +39,8 @@ export default function App() {
   const [rawOcrJson, setRawOcrJson] = useState<string>('');
   const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
   const [boardFlipped, setBoardFlipped] = useState(false);
+  const [preprocessedImages, setPreprocessedImages] = useState<ProcessedImage[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<ModelId>('gemini-2.5-flash');
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
@@ -104,33 +109,51 @@ export default function App() {
   const handleImagesSelected = useCallback(
     async (files: File[], modelId: ModelId = 'gemini-2.5-flash') => {
       imageFilesRef.current = files;
-
+      setSelectedModelId(modelId);
       setIsProcessing(true);
-      setProcessingStatus(`Recognizing image 1 of ${files.length}...`);
+      setProcessingStatus('Correcting image orientation...');
       setError(null);
       setStep('processing');
 
       try {
-        // Preprocess images: correct EXIF orientation and normalize to JPEG
-        setProcessingStatus('Correcting image orientation...');
         const processed = [];
         for (let i = 0; i < files.length; i++) {
           processed.push(await correctImageOrientation(files[i]));
         }
+        setPreprocessedImages(processed);
+        setIsProcessing(false);
+        setProcessingStatus('');
+        setStep('perspective');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to process image');
+        setStep('upload');
+        setIsProcessing(false);
+        setProcessingStatus('');
+      }
+    },
+    []
+  );
 
+  /** Run perspective warp (if adjusted) → merge → OCR */
+  const runOcrPipeline = useCallback(
+    async (images: ProcessedImage[]) => {
+      setIsProcessing(true);
+      setStep('processing');
+
+      try {
         // Merge multiple images into one for a single OCR call
-        let ocrImage = processed[0];
-        if (processed.length > 1) {
+        let ocrImage = images[0];
+        if (images.length > 1) {
           setProcessingStatus('Merging images...');
-          ocrImage = await mergeImages(processed);
+          ocrImage = await mergeImages(images);
         }
 
         // Single OCR call on the (possibly merged) image
         setProcessingStatus('Recognizing moves...');
-        const result = await recognizeScoreSheet(ocrImage.base64, ocrImage.mimeType, modelId);
+        const result = await recognizeScoreSheet(ocrImage.base64, ocrImage.mimeType, selectedModelId);
 
         // Clean up merged image URL if it was created separately
-        if (processed.length > 1) {
+        if (images.length > 1) {
           URL.revokeObjectURL(ocrImage.url);
         }
         setRawOcrJson(JSON.stringify(result, null, 2));
@@ -159,7 +182,7 @@ export default function App() {
         const speculative = buildSpeculativeTail(rawMoves, validatedMoves.length, lastFen);
         const allMoves = [...validatedMoves, ...speculative];
 
-        const imageUrls = processed.map((p) => p.url);
+        const imageUrls = images.map((p) => p.url);
 
         setGameState((prev) => {
           prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
@@ -182,8 +205,36 @@ export default function App() {
         setProcessingStatus('');
       }
     },
-    []
+    [selectedModelId]
   );
+
+  /** Called when user confirms perspective corners */
+  const handlePerspectiveApply = useCallback(
+    async (cornersPerImage: Point2D[][]) => {
+      setIsProcessing(true);
+      setProcessingStatus('Applying perspective correction...');
+
+      try {
+        const warped: ProcessedImage[] = [];
+        for (let i = 0; i < preprocessedImages.length; i++) {
+          warped.push(await applyPerspectiveWarp(preprocessedImages[i], cornersPerImage[i]));
+        }
+        setPreprocessedImages(warped);
+        await runOcrPipeline(warped);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Perspective correction failed');
+        setStep('upload');
+        setIsProcessing(false);
+        setProcessingStatus('');
+      }
+    },
+    [preprocessedImages, runOcrPipeline]
+  );
+
+  /** Called when user skips perspective correction */
+  const handlePerspectiveSkip = useCallback(() => {
+    runOcrPipeline(preprocessedImages);
+  }, [preprocessedImages, runOcrPipeline]);
 
   const handleSelectMove = useCallback((index: number) => {
     setGameState((prev) => ({ ...prev, selectedMoveIndex: index }));
@@ -500,6 +551,17 @@ export default function App() {
         {(step === 'upload' || step === 'processing') && (
           <div className="py-6 sm:py-12">
             <ImageUpload onImagesSelected={handleImagesSelected} isProcessing={isProcessing} processingStatus={processingStatus} />
+          </div>
+        )}
+
+        {step === 'perspective' && (
+          <div className="py-4 sm:py-8">
+            <PerspectiveEditor
+              images={preprocessedImages}
+              onApply={handlePerspectiveApply}
+              onSkip={handlePerspectiveSkip}
+              isProcessing={isProcessing}
+            />
           </div>
         )}
 

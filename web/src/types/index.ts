@@ -68,4 +68,4 @@ export interface GameState {
   imageUrls: string[];
 }
 
-export type AppStep = 'upload' | 'processing' | 'review' | 'export';
+export type AppStep = 'upload' | 'perspective' | 'processing' | 'review' | 'export';

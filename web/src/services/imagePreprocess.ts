@@ -1,7 +1,9 @@
+import type { Point2D } from './perspectiveTransform';
+import { warpPerspective, computeOutputSize } from './perspectiveTransform';
+
 /**
- * Client-side image preprocessing: EXIF orientation correction and multi-image merging.
- * Uses createImageBitmap with imageOrientation: 'from-image' to auto-correct
- * rotation from EXIF metadata, then re-encodes as JPEG for consistent output.
+ * Client-side image preprocessing: EXIF orientation correction, perspective
+ * correction, and multi-image merging.
  */
 
 export interface ProcessedImage {
@@ -62,6 +64,55 @@ export async function mergeImages(images: ProcessedImage[]): Promise<ProcessedIm
     xOffset += scaledWidths[i];
     bitmaps[i].close();
   }
+
+  return canvasToProcessedImage(canvas);
+}
+
+/**
+ * Apply perspective warp to a preprocessed image using 4 corner points.
+ * Corners are in normalized [0,1] coordinates, ordered: TL, TR, BR, BL.
+ * If corners are at the full image edges (identity), returns the original image.
+ */
+export async function applyPerspectiveWarp(
+  image: ProcessedImage,
+  corners: Point2D[]
+): Promise<ProcessedImage> {
+  // Check if corners are identity (no correction needed)
+  const identity = [
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+  ];
+  const isIdentity = corners.every(
+    (c, i) => Math.abs(c.x - identity[i].x) < 0.001 && Math.abs(c.y - identity[i].y) < 0.001
+  );
+  if (isIdentity) return image;
+
+  // Load the image as a bitmap
+  const blob = await fetch(image.url).then((r) => r.blob());
+  const bitmap = await createImageBitmap(blob);
+
+  // Convert normalized corners to pixel coordinates
+  const pixelCorners: Point2D[] = corners.map((c) => ({
+    x: c.x * bitmap.width,
+    y: c.y * bitmap.height,
+  }));
+
+  // Compute output dimensions from the corner positions
+  const { width, height } = computeOutputSize(pixelCorners);
+
+  // Cap max dimension to avoid memory issues on mobile
+  const MAX_DIM = 4096;
+  const scale = Math.min(1, MAX_DIM / Math.max(width, height));
+  const outW = Math.round(width * scale);
+  const outH = Math.round(height * scale);
+
+  const canvas = warpPerspective(bitmap, pixelCorners, outW, outH);
+  bitmap.close();
+
+  // Revoke the old URL since we're replacing it
+  URL.revokeObjectURL(image.url);
 
   return canvasToProcessedImage(canvas);
 }
