@@ -65,7 +65,10 @@ export interface GameState {
   /** User corrections keyed by move index → corrected SAN */
   corrections: Record<number, string>;
   selectedMoveIndex: number;
+  /** Per-page image URLs (for Debug tab page carousel) */
   imageUrls: string[];
+  /** The single image URL sent to OCR (merged if multi-page). Grid/bbox coords are relative to this. */
+  ocrImageUrl: string;
 }
 
 export type AppStep = 'upload' | 'perspective' | 'processing' | 'review' | 'export';

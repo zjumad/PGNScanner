@@ -48,6 +48,7 @@ export default function App() {
     corrections: {},
     selectedMoveIndex: -1,
     imageUrls: [],
+    ocrImageUrl: '',
   });
   const imageFilesRef = useRef<File[]>([]);
 
@@ -103,8 +104,9 @@ export default function App() {
   useEffect(() => {
     return () => {
       gameState.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (gameState.ocrImageUrl) URL.revokeObjectURL(gameState.ocrImageUrl);
     };
-  }, [gameState.imageUrls]);
+  }, [gameState.imageUrls, gameState.ocrImageUrl]);
 
   const handleImagesSelected = useCallback(
     async (files: File[], modelId: ModelId = 'gemini-2.5-flash') => {
@@ -143,19 +145,19 @@ export default function App() {
       try {
         // Merge multiple images into one for a single OCR call
         let ocrImage = images[0];
+        let mergedSeparately = false;
         if (images.length > 1) {
           setProcessingStatus('Merging images...');
           ocrImage = await mergeImages(images);
+          mergedSeparately = true;
         }
 
         // Single OCR call on the (possibly merged) image
         setProcessingStatus('Recognizing moves...');
         const result = await recognizeScoreSheet(ocrImage.base64, ocrImage.mimeType, selectedModelId);
 
-        // Clean up merged image URL if it was created separately
-        if (images.length > 1) {
-          URL.revokeObjectURL(ocrImage.url);
-        }
+        // Keep the OCR image URL for Sheet column crops (grid coords are relative to it)
+        const ocrImageUrl = ocrImage.url;
         setRawOcrJson(JSON.stringify(result, null, 2));
         if (result.grid) setOcrGrid(result.grid);
 
@@ -182,10 +184,12 @@ export default function App() {
         const speculative = buildSpeculativeTail(rawMoves, validatedMoves.length, lastFen);
         const allMoves = [...validatedMoves, ...speculative];
 
-        const imageUrls = images.map((p) => p.url);
+        // Per-page URLs for Debug tab; merged URL for Sheet column crops
+        const imageUrls = mergedSeparately ? images.map((p) => p.url) : [];
 
         setGameState((prev) => {
           prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+          if (prev.ocrImageUrl) URL.revokeObjectURL(prev.ocrImageUrl);
           return {
             header: result.header,
             moves: allMoves,
@@ -193,6 +197,7 @@ export default function App() {
             corrections: {},
             selectedMoveIndex: allMoves.length > 0 ? 0 : -1,
             imageUrls,
+            ocrImageUrl,
           };
         });
         setActiveImageIndex(0);
@@ -341,6 +346,7 @@ export default function App() {
     redoStackRef.current = [];
     setGameState((prev) => {
       prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (prev.ocrImageUrl) URL.revokeObjectURL(prev.ocrImageUrl);
       return {
         header: DEFAULT_HEADER,
         moves: [],
@@ -348,6 +354,7 @@ export default function App() {
         corrections: {},
         selectedMoveIndex: -1,
         imageUrls: [],
+        ocrImageUrl: '',
       };
     });
     setError(null);
@@ -642,7 +649,7 @@ export default function App() {
                       insertingAfterIndex={insertingAfterIndex}
                       onCancelInsert={handleCancelInsert}
                       onNavigateToError={handleNavigateToError}
-                      imageUrls={gameState.imageUrls}
+                      imageUrls={gameState.ocrImageUrl ? [gameState.ocrImageUrl] : gameState.imageUrls}
                       imagePageInfo={gameState.imageUrls.length > 0 ? {
                         total: gameState.imageUrls.length,
                         current: activeImageIndex,
@@ -685,12 +692,17 @@ export default function App() {
               {mobileTab === 'debug' && (
                 <div className="flex flex-col gap-3">
                   {/* Uploaded Images */}
-                  {gameState.imageUrls.length > 0 && (
+                  {(gameState.ocrImageUrl || gameState.imageUrls.length > 0) && (
                     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
                       <h3 className="text-sm font-semibold text-gray-700 mb-2">Uploaded Images</h3>
                       <div className="flex flex-col gap-2">
-                        {gameState.imageUrls.map((url, idx) => (
-                          <DebugImage key={idx} url={url} pageIndex={idx} grid={ocrGrid} onGridCalibrate={handleGridCalibrate} />
+                        {/* Show OCR image (merged or single) with grid overlay */}
+                        {gameState.ocrImageUrl && (
+                          <DebugImage url={gameState.ocrImageUrl} pageIndex={0} grid={ocrGrid} onGridCalibrate={handleGridCalibrate} />
+                        )}
+                        {/* Show individual pages if multi-image */}
+                        {gameState.imageUrls.length > 1 && gameState.imageUrls.map((url, idx) => (
+                          <DebugImage key={idx} url={url} pageIndex={idx + 1} grid={null} onGridCalibrate={handleGridCalibrate} />
                         ))}
                       </div>
                     </div>
