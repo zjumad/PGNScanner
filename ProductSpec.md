@@ -11,6 +11,7 @@ Ultimately this app will be available in the following platforms:
 4. iOS for iPad
 5. Android
 For now, you will focus on 1# for coding. But when design architecture and code struction, you should keep in mind for this cross platform transplate.
+Now let's also package the app is an iOS app for iPhone.
 
 ## Sample file
 Under the /samples folder, I will provide you the sample files as expected input and output if this app. You should use them to design this app, validate the app, and find opportunities for improvement.
@@ -70,7 +71,7 @@ The app follows this workflow:
   - Using the device camera (mobile — the file input has `capture="environment"`).
 - For **2-sided score sheets**, users can add both pages before scanning. Each page is previewed with a page number badge.
 - Supported image formats: JPG, PNG, WEBP (any `image/*` type).
-- A preview of the selected image(s) is shown before processing begins. Users click "Scan" to start processing.
+- A preview of the selected image(s) is shown before processing begins. Users click "Use images" to next step.
 - **Demo mode**: A "Demo with a sample image" button is shown below the drop zone (when no images are selected). Clicking it loads a built-in sample score sheet image (from the Samples folder) and proceeds to the next step, allowing users to try the app without uploading their own photo.
 
 #### Image Preprocessing (automatic)
@@ -85,7 +86,7 @@ After the user selects images and before OCR processing begins, the app automati
 
 This means the OCR model no longer needs to detect or report rotation — all grid coordinates are relative to the upright, corrected image.
 
-#### Perspective Correction (interactive)
+### Step 2: Perspective Correction (interactive)
 
 After EXIF correction and before OCR, the user is presented with an interactive perspective correction screen:
 
@@ -95,6 +96,7 @@ After EXIF correction and before OCR, the user is presented with an interactive 
 4. **Validation**: Corners must form a valid convex quadrilateral (non-self-intersecting, minimum area). An error message is shown if the shape is invalid.
 5. **Three action buttons**:
    - **Apply**: Warps the image(s) using the current corner positions and displays the corrected result on screen. The user stays on this step and can further adjust or reset.
+     - After clicking Apply, the 4 corners should go back to the corners, and further adjustment should be based on the adjusted image, not the original one anymore.
    - **Scan**: Proceeds to OCR processing with the current image(s) (whether warped or original).
    - **Reset**: Discards any perspective adjustments and restores the originally uploaded (EXIF-corrected) image(s), resetting corners to the image edges.
 6. The perspective warp uses a pure JavaScript implementation (no OpenCV): an 8×8 homography solver with Gaussian elimination, applied via a mesh-based canvas warp (20×20 grid cells with affine approximation per cell). Output dimensions are capped at 4096px to prevent mobile memory issues.
@@ -110,21 +112,6 @@ For **multi-image uploads**, instead of processing each image separately, the ap
 5. Grid coordinates in the response are relative to the merged image, ensuring the Sheet column crops are accurate.
 
 This approach produces better results than separate OCR calls because the model sees the complete game in one view and can resolve ambiguities across pages.
-
-#### Manual Rotate & Crop (planned)
-
-After uploading and before scanning, the user should be able to manually adjust images:
-
-- **Rotate**: A rotation control allowing 1° incremental adjustments (e.g., a slider or +/− buttons). This applies a real rotation to the image data (not just CSS), so the OCR model and UI both see the rotated version. Useful for slightly tilted photos that aren't perfectly aligned.
-- **Crop**: The user can drag to select a rectangular region of the image to crop to. This is useful when:
-  - The photo includes extra background beyond the score sheet
-  - Only one side of a 2-sided sheet is visible and needs trimming
-- After rotating or cropping, the preview updates immediately. The user can undo these adjustments before scanning.
-- These adjustments are applied to the preprocessed (EXIF-corrected) image, so they compose correctly.
-
-### Step 2: Perspective Correction
-
-See "Perspective Correction (interactive)" above under Image Preprocessing.
 
 ### Step 3: Processing
 
@@ -213,7 +200,7 @@ The file name patttern will be something like the PGN file names under /Samples 
 
 - The exported PGN includes standard header tags (Event, Date, Round, White, Black, Result, and optionally WhiteElo, BlackElo, Opening, ECO).
 - Only valid moves are included in the move text.
-- Forced/uncertain matches are annotated with comments: `{uncertain: OCR read "raw text"}`.
+- PGN output contains only standard move text — no uncertainty annotations or inline comments.
 - The download filename follows the pattern: `{Date} - {Round} - {White} vs {Black}.pgn`.
 
 ## OCR Export
@@ -250,7 +237,6 @@ In the review screen, the following keyboard shortcuts are available (when the a
   - **Gemini**: Standard grid instructions; these models handle spatial localization well.
   - **GPT-5 / GPT-5 Mini**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common failure of including the header/event info in the grid bounding box.
 - **Grid validation**: The app validates returned grid descriptors before using them (coordinates in [0,1], nonzero dimensions, reasonable row heights, grid starts below header area). Invalid grids are rejected and fall back to per-move bounding boxes.
-- **Grid calibration**: Users can manually recalibrate the grid in the Debug tab by clicking two points (top-left of row 1, bottom-right of last row) on the uploaded image. This overrides the model's grid and recomputes all move bounding boxes.
 
 ## Improvement Features
 

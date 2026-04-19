@@ -227,7 +227,15 @@ export default function PerspectiveEditor({
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3 items-center justify-center">
         <button
-          onClick={() => onApplyPreview(allCorners)}
+          onClick={() => {
+            onApplyPreview(allCorners);
+            setAllCorners(images.map(() => [
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+              { x: 1, y: 1 },
+              { x: 0, y: 1 },
+            ]));
+          }}
           disabled={!valid || isProcessing || !hasAnyAdjustment}
           className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >

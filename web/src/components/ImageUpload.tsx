@@ -60,7 +60,7 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
     <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
       <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Upload Score Sheet Photo</h2>
       <p className="text-gray-500 text-xs sm:text-sm text-center">
-        Take a photo of a US Chess Official Score Sheet or upload an existing image.
+        Take a photo of the score sheet or upload an existing image.
         {' '}For 2-sided sheets, add both pages.
       </p>
 
@@ -144,9 +144,9 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
       {previews.length === 0 && !isProcessing && (
         <button
           onClick={handleDemo}
-          className="text-sm text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
+          className="w-full border-2 border-dashed border-green-400 rounded-xl p-4 text-center cursor-pointer transition-colors hover:border-green-500 hover:bg-green-50 bg-green-50/50"
         >
-          Demo with a sample image
+          <p className="text-green-700 font-medium">Demo with a sample image</p>
         </button>
       )}
 

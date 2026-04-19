@@ -40,6 +40,7 @@ export default function App() {
   const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [preprocessedImages, setPreprocessedImages] = useState<ProcessedImage[]>([]);
+  const preprocessedImagesRef = useRef<ProcessedImage[]>([]);
   const [originalImages, setOriginalImages] = useState<ProcessedImage[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<ModelId>('gemini-2.5-flash');
   const [gameState, setGameState] = useState<GameState>({
@@ -52,6 +53,11 @@ export default function App() {
     ocrImageUrl: '',
   });
   const imageFilesRef = useRef<File[]>([]);
+
+  // Keep ref in sync with preprocessedImages state
+  useEffect(() => {
+    preprocessedImagesRef.current = preprocessedImages;
+  }, [preprocessedImages]);
 
   // Undo/redo stacks — store snapshots of moves, corrections, and selectedMoveIndex
   interface UndoSnapshot {
@@ -222,12 +228,21 @@ export default function App() {
       setProcessingStatus('Applying perspective correction...');
 
       try {
-        // Warp from the originals so repeated Apply doesn't degrade quality
+        // Warp from the current preprocessed images (so repeated Apply compounds)
+        const currentImages = preprocessedImagesRef.current;
         const warped: ProcessedImage[] = [];
-        for (let i = 0; i < originalImages.length; i++) {
-          warped.push(await applyPerspectiveWarp(originalImages[i], cornersPerImage[i]));
+        for (let i = 0; i < currentImages.length; i++) {
+          warped.push(await applyPerspectiveWarp(currentImages[i], cornersPerImage[i]));
         }
-        setPreprocessedImages(warped);
+        // Revoke old warped URLs (but not originals)
+        setPreprocessedImages((prev) => {
+          prev.forEach((img) => {
+            if (!originalImages.some((orig) => orig.url === img.url)) {
+              URL.revokeObjectURL(img.url);
+            }
+          });
+          return warped;
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Perspective correction failed');
       } finally {
@@ -341,7 +356,9 @@ export default function App() {
     const whitePart = gameState.header.white || 'White';
     const blackPart = gameState.header.black || 'Black';
     a.href = url;
-    a.download = `${datePart} - ${gameState.header.round || 'R'} - ${whitePart} vs ${blackPart}.pgn`;
+    const roundNum = parseInt(gameState.header.round, 10);
+    const roundPart = !isNaN(roundNum) ? String(roundNum).padStart(2, '0') : (gameState.header.round || 'R');
+    a.download = `${datePart} - ${roundPart} - ${whitePart} vs ${blackPart}.pgn`;
     a.click();
     URL.revokeObjectURL(url);
   }, [gameState]);
@@ -369,9 +386,8 @@ export default function App() {
     setOcrGrid(null);
   }, []);
 
-  const handleGridCalibrate = useCallback((newGrid: GridDescriptor) => {
+  const handleGridUpdate = useCallback((newGrid: GridDescriptor) => {
     setOcrGrid(newGrid);
-    // Recompute bbox on all validated moves
     setGameState((prev) => ({
       ...prev,
       moves: prev.moves.map((m) => {
@@ -702,15 +718,15 @@ export default function App() {
                   {/* Uploaded Images */}
                   {(gameState.ocrImageUrl || gameState.imageUrls.length > 0) && (
                     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Uploaded Images</h3>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Processed Images</h3>
                       <div className="flex flex-col gap-2">
                         {/* Show OCR image (merged or single) with grid overlay */}
                         {gameState.ocrImageUrl && (
-                          <DebugImage url={gameState.ocrImageUrl} pageIndex={0} grid={ocrGrid} onGridCalibrate={handleGridCalibrate} />
+                          <DebugImage url={gameState.ocrImageUrl} pageIndex={0} grid={ocrGrid} onGridUpdate={handleGridUpdate} />
                         )}
                         {/* Show individual pages if multi-image */}
                         {gameState.imageUrls.length > 1 && gameState.imageUrls.map((url, idx) => (
-                          <DebugImage key={idx} url={url} pageIndex={idx + 1} grid={null} onGridCalibrate={handleGridCalibrate} />
+                          <DebugImage key={idx} url={url} pageIndex={idx + 1} grid={null} onGridUpdate={handleGridUpdate} />
                         ))}
                       </div>
                     </div>
@@ -769,16 +785,14 @@ function NavigationControls({
   );
 }
 
-/** Debug image with interactive grid overlay, coordinate display, and grid controls */
-function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
+/** Debug image with interactive grid overlay and coordinate display */
+function DebugImage({ url, pageIndex, grid, onGridUpdate }: {
   url: string;
   pageIndex: number;
   grid: GridDescriptor | null;
-  onGridCalibrate: (grid: GridDescriptor) => void;
+  onGridUpdate: (grid: GridDescriptor) => void;
 }) {
   const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
-  const [calibrating, setCalibrating] = useState(false);
-  const [anchor1, setAnchor1] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Number of visible grids (1, 2, or 3)
@@ -802,40 +816,6 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
 
   const handleMouseLeave = useCallback(() => setCoords(null), []);
 
-  const handleClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (!calibrating) return;
-    const pt = getNormalizedCoords(e);
-    if (!anchor1) {
-      setAnchor1(pt);
-    } else {
-      const topLeft = { x: Math.min(anchor1.x, pt.x), y: Math.min(anchor1.y, pt.y) };
-      const bottomRight = { x: Math.max(anchor1.x, pt.x), y: Math.max(anchor1.y, pt.y) };
-      const newGrid: GridDescriptor = {
-        leftHalf: {
-          x: topLeft.x,
-          y: topLeft.y,
-          width: bottomRight.x - topLeft.x,
-          height: bottomRight.y - topLeft.y,
-          rows: grid?.leftHalf.rows || 25,
-        },
-        rightHalf: grid?.rightHalf || { x: 0, y: 0, width: 0, height: 0, rows: 25 },
-      };
-      onGridCalibrate(newGrid);
-      setCalibrating(false);
-      setAnchor1(null);
-    }
-  }, [calibrating, anchor1, grid, getNormalizedCoords, onGridCalibrate]);
-
-  const startCalibrating = useCallback(() => {
-    setCalibrating(true);
-    setAnchor1(null);
-  }, []);
-
-  const cancelCalibrating = useCallback(() => {
-    setCalibrating(false);
-    setAnchor1(null);
-  }, []);
-
   // Update grid count
   const setGridCount = useCallback((count: number) => {
     if (!grid) return;
@@ -848,35 +828,35 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
     });
     const zeroHalf = { x: 0, y: 0, width: 0, height: 0, rows: grid.leftHalf.rows };
     if (count === 1) {
-      onGridCalibrate({ ...grid, rightHalf: zeroHalf, thirdHalf: undefined });
+      onGridUpdate({ ...grid, rightHalf: zeroHalf, thirdHalf: undefined });
     } else if (count === 2) {
-      onGridCalibrate({
+      onGridUpdate({
         ...grid,
         rightHalf: grid.rightHalf.width > 0 ? grid.rightHalf : makeHalf(grid.leftHalf.width + 0.05),
         thirdHalf: undefined,
       });
     } else if (count === 3) {
       const gap = grid.leftHalf.width + 0.03;
-      onGridCalibrate({
+      onGridUpdate({
         ...grid,
         rightHalf: grid.rightHalf.width > 0 ? grid.rightHalf : makeHalf(gap),
         thirdHalf: grid.thirdHalf && grid.thirdHalf.width > 0 ? grid.thirdHalf : makeHalf(gap * 2),
       });
     }
-  }, [grid, onGridCalibrate]);
+  }, [grid, onGridUpdate]);
 
   // Update rows for a half
   const setHalfRows = useCallback((half: 'left' | 'right' | 'third', rows: number) => {
     if (!grid) return;
     const clamped = Math.max(1, Math.min(60, rows));
     if (half === 'left') {
-      onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, rows: clamped } });
+      onGridUpdate({ ...grid, leftHalf: { ...grid.leftHalf, rows: clamped } });
     } else if (half === 'right') {
-      onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, rows: clamped } });
+      onGridUpdate({ ...grid, rightHalf: { ...grid.rightHalf, rows: clamped } });
     } else {
-      onGridCalibrate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), rows: clamped } });
+      onGridUpdate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), rows: clamped } });
     }
-  }, [grid, onGridCalibrate]);
+  }, [grid, onGridUpdate]);
 
   // Commit a rectangle update from drag/resize
   const handleRectUpdate = useCallback((half: 'left' | 'right' | 'third', updated: { x: number; y: number; width: number; height: number }) => {
@@ -888,13 +868,13 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
       height: Math.max(0.02, Math.min(1, updated.height)),
     };
     if (half === 'left') {
-      onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, ...clamped } });
+      onGridUpdate({ ...grid, leftHalf: { ...grid.leftHalf, ...clamped } });
     } else if (half === 'right') {
-      onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, ...clamped } });
+      onGridUpdate({ ...grid, rightHalf: { ...grid.rightHalf, ...clamped } });
     } else {
-      onGridCalibrate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), ...clamped } });
+      onGridUpdate({ ...grid, thirdHalf: { ...(grid.thirdHalf || grid.leftHalf), ...clamped } });
     }
-  }, [grid, onGridCalibrate]);
+  }, [grid, onGridUpdate]);
 
   return (
     <div className="border border-gray-300 rounded overflow-hidden">
@@ -905,18 +885,6 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             <span className="font-mono text-blue-600">
               x: {coords.x.toFixed(3)}, y: {coords.y.toFixed(3)}
             </span>
-          )}
-          {calibrating ? (
-            <div className="flex items-center gap-1">
-              <span className="text-orange-600 font-semibold">
-                {anchor1 ? 'Click bottom-right of last row' : 'Click top-left of row 1'}
-              </span>
-              <button onClick={cancelCalibrating} className="px-1.5 py-0.5 bg-gray-200 rounded text-xs hover:bg-gray-300">✕</button>
-            </div>
-          ) : (
-            <button onClick={startCalibrating} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
-              📐 Calibrate Grid
-            </button>
           )}
         </div>
       </div>
@@ -974,11 +942,11 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
           )}
         </div>
       )}
-      <div ref={containerRef} className="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
+      <div ref={containerRef} className="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
         <img
           src={url}
           alt={`Uploaded page ${pageIndex + 1}`}
-          className={`w-full ${calibrating ? 'cursor-crosshair' : 'cursor-crosshair'}`}
+          className="w-full cursor-crosshair"
           draggable={false}
         />
         {/* Interactive grid overlays */}
@@ -989,7 +957,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             label={`Grid 1 (1-${grid.leftHalf.rows})`}
             containerRef={containerRef}
             onUpdate={(rect) => handleRectUpdate('left', rect)}
-            disabled={calibrating}
+            disabled={false}
           />
         )}
         {grid && grid.rightHalf.width > 0 && (
@@ -999,7 +967,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             label={`Grid 2 (${grid.leftHalf.rows + 1}-${grid.leftHalf.rows + grid.rightHalf.rows})`}
             containerRef={containerRef}
             onUpdate={(rect) => handleRectUpdate('right', rect)}
-            disabled={calibrating}
+            disabled={false}
           />
         )}
         {grid && grid.thirdHalf && grid.thirdHalf.width > 0 && (
@@ -1009,14 +977,7 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
             label={`Grid 3 (${grid.leftHalf.rows + grid.rightHalf.rows + 1}-${grid.leftHalf.rows + grid.rightHalf.rows + grid.thirdHalf.rows})`}
             containerRef={containerRef}
             onUpdate={(rect) => handleRectUpdate('third', rect)}
-            disabled={calibrating}
-          />
-        )}
-        {/* Calibration anchor point */}
-        {calibrating && anchor1 && (
-          <div
-            className="absolute w-3 h-3 bg-orange-500 rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none border border-white"
-            style={{ left: `${anchor1.x * 100}%`, top: `${anchor1.y * 100}%` }}
+            disabled={false}
           />
         )}
       </div>

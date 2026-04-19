@@ -575,7 +575,6 @@ export function getLegalMovesAtPosition(
 
 /**
  * Generate PGN string from validated moves and header.
- * Forced guesses are annotated with comments.
  * Speculative moves are excluded.
  */
 export function generatePgn(
@@ -605,9 +604,7 @@ export function generatePgn(
     } else {
       moveText += `${move.san} `;
     }
-    if (move.matchType === 'forced') {
-      moveText += `{uncertain: OCR read "${move.rawOcr || '?'}"} `;
-    }
+
   }
 
   moveText += header.result;

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { ValidatedMove } from '../types';
 
 const ROWS_PER_COLUMN = 30;
@@ -28,9 +28,7 @@ export default function MoveList({
   moves,
   selectedIndex,
   onSelectMove,
-  onInsertMove,
   onDeleteMove,
-  insertLegalMoves,
   onRequestInsert,
   insertingAfterIndex,
   onCancelInsert,
@@ -171,18 +169,18 @@ export default function MoveList({
     }
   }
 
-  // Insert row render helper (not a component — avoids "component created during render" lint error)
+  // Insert row render helper — just highlights the insert position; actual move selection
+  // happens via the board or Legal Moves panel.
   const renderInsertButton = (afterIndex: number, label?: string) => {
     const isActive = insertingAfterIndex === afterIndex;
     if (isActive) {
       return (
-        <div className="relative">
-          <InsertDropdown
-            legalMoves={insertLegalMoves}
-            onSelect={(san) => onInsertMove(afterIndex, san)}
-            onCancel={onCancelInsert}
-            inline={true}
-          />
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-green-600 font-medium">← Insert here (use board or Legal Moves)</span>
+          <button
+            className="text-xs text-gray-400 hover:text-gray-600"
+            onClick={(e) => { e.stopPropagation(); onCancelInsert(); }}
+          >✕</button>
         </div>
       );
     }
@@ -440,97 +438,6 @@ function MoveCell({
           ← {move.rawOcr}
         </span>
       )}
-    </div>
-  );
-}
-
-function InsertDropdown({
-  legalMoves,
-  onSelect,
-  onCancel,
-  inline,
-}: {
-  legalMoves: string[];
-  onSelect: (san: string) => void;
-  onCancel: () => void;
-  inline?: boolean;
-}) {
-  const [filter, setFilter] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const filtered = filter
-    ? legalMoves.filter((m) => m.toLowerCase().includes(filter.toLowerCase()))
-    : legalMoves;
-
-  if (inline) {
-    return (
-      <div className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Type or pick a move..."
-          className="w-full px-2 py-1 text-sm border-2 border-green-500 rounded focus:outline-none font-mono bg-white"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') onCancel();
-            if (e.key === 'Enter' && filtered.length === 1) {
-              onSelect(filtered[0]);
-            }
-          }}
-        />
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-green-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
-          {filtered.map((m) => (
-            <button
-              key={m}
-              className="w-full text-left px-3 py-1.5 text-sm font-mono hover:bg-green-50"
-              onClick={() => onSelect(m)}
-            >
-              {m}
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <div className="px-3 py-2 text-xs text-gray-400">No matching moves</div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute z-20 left-0 mt-1 bg-white border border-green-300 rounded-md shadow-lg w-48">
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Filter moves..."
-        className="w-full px-2 py-1 text-xs border-b border-gray-200 focus:outline-none font-mono"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onCancel();
-          if (e.key === 'Enter' && filtered.length === 1) {
-            onSelect(filtered[0]);
-          }
-        }}
-      />
-      <div className="max-h-36 overflow-y-auto">
-        {filtered.map((m) => (
-          <button
-            key={m}
-            className="w-full text-left px-2 py-1 text-xs font-mono hover:bg-green-50"
-            onClick={() => onSelect(m)}
-          >
-            {m}
-          </button>
-        ))}
-        {filtered.length === 0 && (
-          <div className="px-2 py-1 text-xs text-gray-400">No matching moves</div>
-        )}
-      </div>
     </div>
   );
 }

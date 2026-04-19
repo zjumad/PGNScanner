@@ -111,9 +111,6 @@ export async function applyPerspectiveWarp(
   const canvas = warpPerspective(bitmap, pixelCorners, outW, outH);
   bitmap.close();
 
-  // Revoke the old URL since we're replacing it
-  URL.revokeObjectURL(image.url);
-
   return canvasToProcessedImage(canvas);
 }
 
