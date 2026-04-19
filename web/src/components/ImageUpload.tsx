@@ -31,11 +31,10 @@ export default function ImageUpload({ onImageSelected, isProcessing }: ImageUplo
   );
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800">Upload Score Sheet Photo</h2>
-      <p className="text-gray-500 text-sm text-center">
+    <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Upload Score Sheet Photo</h2>
+      <p className="text-gray-500 text-xs sm:text-sm text-center">
         Take a photo of a US Chess Official Score Sheet or upload an existing image.
-        The photo can be rotated — the system will auto-detect orientation.
       </p>
 
       {/* Drop zone */}

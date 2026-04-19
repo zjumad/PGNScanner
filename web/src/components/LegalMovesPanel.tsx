@@ -67,16 +67,16 @@ export default function LegalMovesPanel({
   }, [grouped, pieceFilter]);
 
   return (
-    <div className="w-full bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-      <h3 className="text-sm font-semibold text-gray-600 mb-2">
+    <div className="w-full bg-white rounded-lg border border-gray-200 shadow-sm p-2 sm:p-3">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-600 mb-1.5 sm:mb-2">
         Legal Moves at {moveLabel}
-        <span className="text-xs font-normal text-gray-400 ml-2">
-          ({legalMoves.length} moves)
+        <span className="text-[10px] sm:text-xs font-normal text-gray-400 ml-1 sm:ml-2">
+          ({legalMoves.length})
         </span>
       </h3>
 
       {/* Piece filter icons */}
-      <div className="flex gap-1 mb-2">
+      <div className="flex gap-0.5 sm:gap-1 mb-1.5 sm:mb-2 flex-wrap">
         <button
           className={`px-2 py-1 text-xs rounded border transition-colors ${
             pieceFilter === null
@@ -111,11 +111,11 @@ export default function LegalMovesPanel({
       </div>
 
       {/* Move buttons */}
-      <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+      <div className="flex flex-wrap gap-0.5 sm:gap-1 max-h-28 sm:max-h-32 overflow-y-auto">
         {displayMoves.map((move) => (
           <button
             key={move}
-            className={`px-2 py-0.5 text-xs font-mono rounded border transition-colors ${
+            className={`px-1.5 sm:px-2 py-0.5 text-[11px] sm:text-xs font-mono rounded border transition-colors ${
               move === currentSan
                 ? 'bg-blue-100 border-blue-400 text-blue-800 font-bold'
                 : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-blue-50 hover:border-blue-300'

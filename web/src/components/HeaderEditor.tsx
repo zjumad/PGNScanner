@@ -43,9 +43,9 @@ export default function HeaderEditor({ header, onChange }: HeaderEditorProps) {
       </button>
 
       {!collapsed && (
-        <div className="px-4 pb-4 grid grid-cols-2 gap-3">
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
           {fields.map(({ key, label, placeholder }) => (
-            <div key={key} className={key === 'event' ? 'col-span-2' : ''}>
+            <div key={key} className={key === 'event' ? 'sm:col-span-2' : ''}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
               <input
                 type="text"
@@ -57,7 +57,7 @@ export default function HeaderEditor({ header, onChange }: HeaderEditorProps) {
             </div>
           ))}
 
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-gray-500 mb-1">Result</label>
             <select
               value={header.result}

@@ -32,6 +32,7 @@ export default function App() {
   const [apiProvider, setApiProvider] = useState<ApiProvider>('gemini');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<'board' | 'moves' | 'image'>('board');
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
@@ -303,17 +304,17 @@ export default function App() {
       onKeyDown={handleKeyDown}
     >
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{'\u265F'}</span>
-            <h1 className="text-xl font-bold text-gray-800">PGN Scanner</h1>
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xl sm:text-2xl">{'\u265F'}</span>
+            <h1 className="text-lg sm:text-xl font-bold text-gray-800">PGN Scanner</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <ApiKeyDialog onKeySet={handleApiKeySet} />
             {step === 'review' && (
               <button
                 onClick={handleStartOver}
-                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 New Scan
               </button>
@@ -323,8 +324,8 @@ export default function App() {
       </header>
 
       {error && (
-        <div className="max-w-[1600px] mx-auto px-4 mt-4">
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-4 mt-2 sm:mt-4">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm flex items-center justify-between">
             <span>{error}</span>
             <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
               {'\u2715'}
@@ -333,104 +334,226 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-[1600px] mx-auto px-4 py-6">
+      <main className="max-w-[1600px] mx-auto px-2 sm:px-4 py-2 sm:py-6">
         {(step === 'upload' || step === 'processing') && (
-          <div className="py-12">
+          <div className="py-6 sm:py-12">
             <ImageUpload onImageSelected={handleImageSelected} isProcessing={isProcessing} />
           </div>
         )}
 
         {step === 'review' && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_auto] gap-6" style={{ maxHeight: 'calc(100vh - 140px)' }}>
-            {/* Left: Original image */}
-            <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-                <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
-                {gameState.imageUrl && (
-                  <img
-                    src={gameState.imageUrl}
-                    alt="Score sheet"
-                    className="w-full rounded-md"
+          <>
+            {/* Mobile tab bar — visible only on small screens */}
+            <div className="flex lg:hidden border-b border-gray-200 bg-white rounded-t-lg mb-2">
+              {[
+                { id: 'board' as const, label: '♟ Board', icon: '♟' },
+                { id: 'moves' as const, label: '☰ Moves', icon: '☰' },
+                { id: 'image' as const, label: '📷 Image', icon: '📷' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                    mobileTab === tab.id
+                      ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => setMobileTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Desktop layout: 3-column grid */}
+            <div className="hidden lg:grid lg:grid-cols-[1fr_1fr_auto] gap-6" style={{ maxHeight: 'calc(100vh - 140px)' }}>
+              {/* Left: Original image */}
+              <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
+                  {gameState.imageUrl && (
+                    <img src={gameState.imageUrl} alt="Score sheet" className="w-full rounded-md" />
+                  )}
+                </div>
+              </div>
+
+              {/* Center: Header + Move list */}
+              <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 140px)' }}>
+                <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
+                <div className="flex-1 min-h-0">
+                  <MoveList
+                    moves={gameState.moves}
+                    selectedIndex={gameState.selectedMoveIndex}
+                    onSelectMove={handleSelectMove}
+                    onCorrectMove={handleCorrectMove}
+                    onInsertMove={handleInsertMove}
+                    onDeleteMove={handleDeleteMove}
+                    insertLegalMoves={insertLegalMoves}
+                    onRequestInsert={handleRequestInsert}
+                    insertingAfterIndex={insertingAfterIndex}
+                    onCancelInsert={handleCancelInsert}
+                  />
+                </div>
+              </div>
+
+              {/* Right: Board + Legal moves + Controls */}
+              <div className="flex flex-col items-center gap-4">
+                <BoardViewer
+                  fen={boardFen}
+                  interactive={selectedMove !== null || isInserting}
+                  legalMoves={legalMovesAtSelected}
+                  onMoveMade={handleBoardMove}
+                />
+                <NavigationControls
+                  isInserting={isInserting}
+                  selectedMove={selectedMove}
+                  onNavigate={handleNavigate}
+                />
+                {(selectedMove || isInserting) && (
+                  <LegalMovesPanel
+                    legalMoves={legalMovesAtSelected}
+                    currentSan={isInserting ? '' : selectedMove!.san}
+                    moveLabel={legalMovesLabel}
+                    sideToMove={legalMovesSide}
+                    onSelectMove={(san) => {
+                      if (isInserting) {
+                        handleInsertMove(insertingAfterIndex!, san);
+                      } else {
+                        handleCorrectMove(gameState.selectedMoveIndex, san);
+                      }
+                    }}
                   />
                 )}
+                <button
+                  onClick={handleExportPgn}
+                  className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md"
+                >
+                  Export PGN
+                </button>
+                <div className="w-full bg-gray-800 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap">
+                    {generatePgn(gameState.header, gameState.moves)}
+                  </pre>
+                </div>
               </div>
             </div>
 
-            {/* Center: Header + Move list */}
-            <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 140px)' }}>
-              <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
-              <div className="flex-1 min-h-0">
-                <MoveList
-                  moves={gameState.moves}
-                  selectedIndex={gameState.selectedMoveIndex}
-                  onSelectMove={handleSelectMove}
-                  onCorrectMove={handleCorrectMove}
-                  onInsertMove={handleInsertMove}
-                  onDeleteMove={handleDeleteMove}
-                  insertLegalMoves={insertLegalMoves}
-                  onRequestInsert={handleRequestInsert}
-                  insertingAfterIndex={insertingAfterIndex}
-                  onCancelInsert={handleCancelInsert}
-                />
-              </div>
-            </div>
-
-            {/* Right: Board + Legal moves + Controls */}
-            <div className="flex flex-col items-center gap-4">
-              <BoardViewer
-                fen={boardFen}
-                interactive={selectedMove !== null || isInserting}
-                legalMoves={legalMovesAtSelected}
-                onMoveMade={handleBoardMove}
-              />
-
-              <div className="flex items-center gap-2">
-                <button onClick={() => handleNavigate('start')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to start">{'\u23EE'}</button>
-                <button onClick={() => handleNavigate('prev')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Previous move">{'\u25C0'}</button>
-                <span className="px-3 text-sm text-gray-500 font-mono min-w-[80px] text-center">
-                  {isInserting
-                    ? <span className="text-green-600">Inserting...</span>
-                    : selectedMove
-                      ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
-                      : 'Start'}
-                </span>
-                <button onClick={() => handleNavigate('next')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Next move">{'\u25B6'}</button>
-                <button onClick={() => handleNavigate('end')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to end">{'\u23ED'}</button>
-              </div>
-
-              {/* Legal moves panel */}
-              {(selectedMove || isInserting) && (
-                <LegalMovesPanel
-                  legalMoves={legalMovesAtSelected}
-                  currentSan={isInserting ? '' : selectedMove!.san}
-                  moveLabel={legalMovesLabel}
-                  sideToMove={legalMovesSide}
-                  onSelectMove={(san) => {
-                    if (isInserting) {
-                      handleInsertMove(insertingAfterIndex!, san);
-                    } else {
-                      handleCorrectMove(gameState.selectedMoveIndex, san);
-                    }
-                  }}
-                />
+            {/* Mobile layout: tabbed single-column */}
+            <div className="lg:hidden">
+              {/* Board tab */}
+              {mobileTab === 'board' && (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-full max-w-[400px]">
+                    <BoardViewer
+                      fen={boardFen}
+                      interactive={selectedMove !== null || isInserting}
+                      legalMoves={legalMovesAtSelected}
+                      onMoveMade={handleBoardMove}
+                    />
+                  </div>
+                  <NavigationControls
+                    isInserting={isInserting}
+                    selectedMove={selectedMove}
+                    onNavigate={handleNavigate}
+                    compact
+                  />
+                  {(selectedMove || isInserting) && (
+                    <LegalMovesPanel
+                      legalMoves={legalMovesAtSelected}
+                      currentSan={isInserting ? '' : selectedMove!.san}
+                      moveLabel={legalMovesLabel}
+                      sideToMove={legalMovesSide}
+                      onSelectMove={(san) => {
+                        if (isInserting) {
+                          handleInsertMove(insertingAfterIndex!, san);
+                        } else {
+                          handleCorrectMove(gameState.selectedMoveIndex, san);
+                        }
+                      }}
+                    />
+                  )}
+                  <button
+                    onClick={handleExportPgn}
+                    className="w-full px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md text-sm"
+                  >
+                    Export PGN
+                  </button>
+                </div>
               )}
 
-              <button
-                onClick={handleExportPgn}
-                className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md"
-              >
-                Export PGN
-              </button>
+              {/* Moves tab */}
+              {mobileTab === 'moves' && (
+                <div className="flex flex-col gap-3" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+                  <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
+                  <div className="flex-1 min-h-0">
+                    <MoveList
+                      moves={gameState.moves}
+                      selectedIndex={gameState.selectedMoveIndex}
+                      onSelectMove={(idx) => {
+                        handleSelectMove(idx);
+                        setMobileTab('board'); // switch to board to see the position
+                      }}
+                      onCorrectMove={handleCorrectMove}
+                      onInsertMove={handleInsertMove}
+                      onDeleteMove={handleDeleteMove}
+                      insertLegalMoves={insertLegalMoves}
+                      onRequestInsert={handleRequestInsert}
+                      insertingAfterIndex={insertingAfterIndex}
+                      onCancelInsert={handleCancelInsert}
+                    />
+                  </div>
+                  <div className="bg-gray-800 text-green-400 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap">
+                      {generatePgn(gameState.header, gameState.moves)}
+                    </pre>
+                  </div>
+                </div>
+              )}
 
-              <div className="w-full bg-gray-800 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-32 overflow-y-auto">
-                <pre className="whitespace-pre-wrap">
-                  {generatePgn(gameState.header, gameState.moves)}
-                </pre>
-              </div>
+              {/* Image tab */}
+              {mobileTab === 'image' && (
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-2">
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
+                  {gameState.imageUrl && (
+                    <img src={gameState.imageUrl} alt="Score sheet" className="w-full rounded-md" />
+                  )}
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
       </main>
+    </div>
+  );
+}
+
+/** Reusable navigation controls */
+function NavigationControls({
+  isInserting,
+  selectedMove,
+  onNavigate,
+  compact,
+}: {
+  isInserting: boolean;
+  selectedMove: import('./types').ValidatedMove | null;
+  onNavigate: (dir: 'prev' | 'next' | 'start' | 'end') => void;
+  compact?: boolean;
+}) {
+  const btnClass = compact
+    ? 'p-1.5 rounded hover:bg-gray-200 text-gray-600 text-lg'
+    : 'p-2 rounded hover:bg-gray-200 text-gray-600';
+  return (
+    <div className="flex items-center gap-1 sm:gap-2">
+      <button onClick={() => onNavigate('start')} className={btnClass} title="Go to start">{'\u23EE'}</button>
+      <button onClick={() => onNavigate('prev')} className={btnClass} title="Previous move">{'\u25C0'}</button>
+      <span className={`px-2 sm:px-3 text-xs sm:text-sm text-gray-500 font-mono min-w-[60px] sm:min-w-[80px] text-center`}>
+        {isInserting
+          ? <span className="text-green-600">Insert...</span>
+          : selectedMove
+            ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
+            : 'Start'}
+      </span>
+      <button onClick={() => onNavigate('next')} className={btnClass} title="Next move">{'\u25B6'}</button>
+      <button onClick={() => onNavigate('end')} className={btnClass} title="Go to end">{'\u23ED'}</button>
     </div>
   );
 }
