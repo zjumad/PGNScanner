@@ -93,7 +93,10 @@ After EXIF correction and before OCR, the user is presented with an interactive 
 2. The user drags corners to match the edges of the score sheet, correcting for perspective distortion (e.g., photos taken at an angle).
 3. **Per-page navigation**: For multi-image uploads, the user can navigate between pages to adjust corners for each image independently.
 4. **Validation**: Corners must form a valid convex quadrilateral (non-self-intersecting, minimum area). An error message is shown if the shape is invalid.
-5. **Apply / Skip**: The user clicks "Apply & Scan" to warp images using a homography transform, or "Skip — Scan Without Correction" to proceed with the original images.
+5. **Three action buttons**:
+   - **Apply**: Warps the image(s) using the current corner positions and displays the corrected result on screen. The user stays on this step and can further adjust or reset.
+   - **Scan**: Proceeds to OCR processing with the current image(s) (whether warped or original).
+   - **Reset**: Discards any perspective adjustments and restores the originally uploaded (EXIF-corrected) image(s), resetting corners to the image edges.
 6. The perspective warp uses a pure JavaScript implementation (no OpenCV): an 8×8 homography solver with Gaussian elimination, applied via a mesh-based canvas warp (20×20 grid cells with affine approximation per cell). Output dimensions are capped at 4096px to prevent mobile memory issues.
 
 #### Multi-Image Merge

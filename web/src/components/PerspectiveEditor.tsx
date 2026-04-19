@@ -4,12 +4,14 @@ import { isValidQuad } from '../services/perspectiveTransform';
 import type { ProcessedImage } from '../services/imagePreprocess';
 
 interface PerspectiveEditorProps {
-  /** EXIF-corrected images to edit */
+  /** EXIF-corrected (or already warped) images to edit */
   images: ProcessedImage[];
-  /** Called when user confirms corners and wants to proceed */
-  onApply: (cornersPerImage: Point2D[][]) => void;
-  /** Called when user wants to skip perspective correction */
-  onSkip: () => void;
+  /** Called when user clicks Apply — warp and preview, stay on this step */
+  onApplyPreview: (cornersPerImage: Point2D[][]) => void;
+  /** Called when user clicks Scan — proceed to OCR */
+  onScan: () => void;
+  /** Called when user clicks Reset — restore original images */
+  onReset: () => void;
   isProcessing: boolean;
 }
 
@@ -20,8 +22,9 @@ interface PerspectiveEditorProps {
  */
 export default function PerspectiveEditor({
   images,
-  onApply,
-  onSkip,
+  onApplyPreview,
+  onScan,
+  onReset,
   isProcessing,
 }: PerspectiveEditorProps) {
   const [pageIndex, setPageIndex] = useState(0);
@@ -107,28 +110,25 @@ export default function PerspectiveEditor({
     setDraggingIndex(null);
   }, []);
 
-  // Reset corners for current page
-  const handleReset = useCallback(() => {
-    setAllCorners((prev) => {
-      const updated = [...prev];
-      updated[pageIndex] = [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 1, y: 1 },
-        { x: 0, y: 1 },
-      ];
-      return updated;
-    });
-  }, [pageIndex]);
+  // Full reset: restore original images and reset all corners
+  const handleFullReset = useCallback(() => {
+    setAllCorners(images.map(() => [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
+    ]));
+    onReset();
+  }, [images, onReset]);
 
-  // Keyboard shortcut: Escape to skip
+  // Keyboard shortcut: Escape to reset
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onSkip();
+      if (e.key === 'Escape') handleFullReset();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onSkip]);
+  }, [handleFullReset]);
 
   const cornerLabels = ['TL', 'TR', 'BR', 'BL'];
   const cornerColors = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b'];
@@ -139,8 +139,8 @@ export default function PerspectiveEditor({
         Adjust Perspective
       </h2>
       <p className="text-gray-500 text-xs sm:text-sm text-center">
-        Drag the corner handles to match the score sheet edges, then click Apply &amp; Scan.
-        {' '}Skip if the sheet is already flat.
+        Drag the corner handles to match the score sheet edges, then click Apply to preview.
+        {' '}Click Scan to proceed to OCR.
       </p>
 
       {/* Page navigation for multi-image */}
@@ -227,25 +227,25 @@ export default function PerspectiveEditor({
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3 items-center justify-center">
         <button
-          onClick={() => onApply(allCorners)}
-          disabled={!valid || isProcessing}
-          className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => onApplyPreview(allCorners)}
+          disabled={!valid || isProcessing || !hasAnyAdjustment}
+          className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {hasAnyAdjustment ? 'Apply & Scan' : 'Scan'}
+          Apply
         </button>
         <button
-          onClick={onSkip}
+          onClick={onScan}
+          disabled={isProcessing}
+          className="px-5 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Scan
+        </button>
+        <button
+          onClick={handleFullReset}
           disabled={isProcessing}
           className="px-4 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          Skip correction
-        </button>
-        <button
-          onClick={handleReset}
-          disabled={isProcessing}
-          className="text-sm text-gray-500 hover:text-gray-700 underline"
-        >
-          Reset corners
+          Reset
         </button>
       </div>
 

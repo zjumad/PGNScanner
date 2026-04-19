@@ -40,6 +40,7 @@ export default function App() {
   const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [preprocessedImages, setPreprocessedImages] = useState<ProcessedImage[]>([]);
+  const [originalImages, setOriginalImages] = useState<ProcessedImage[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<ModelId>('gemini-2.5-flash');
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
@@ -123,6 +124,7 @@ export default function App() {
           processed.push(await correctImageOrientation(files[i]));
         }
         setPreprocessedImages(processed);
+        setOriginalImages(processed);
         setIsProcessing(false);
         setProcessingStatus('');
         setStep('perspective');
@@ -213,33 +215,38 @@ export default function App() {
     [selectedModelId]
   );
 
-  /** Called when user confirms perspective corners */
-  const handlePerspectiveApply = useCallback(
+  /** Called when user clicks "Apply" — warp images and show preview, stay on perspective step */
+  const handlePerspectivePreview = useCallback(
     async (cornersPerImage: Point2D[][]) => {
       setIsProcessing(true);
       setProcessingStatus('Applying perspective correction...');
 
       try {
+        // Warp from the originals so repeated Apply doesn't degrade quality
         const warped: ProcessedImage[] = [];
-        for (let i = 0; i < preprocessedImages.length; i++) {
-          warped.push(await applyPerspectiveWarp(preprocessedImages[i], cornersPerImage[i]));
+        for (let i = 0; i < originalImages.length; i++) {
+          warped.push(await applyPerspectiveWarp(originalImages[i], cornersPerImage[i]));
         }
         setPreprocessedImages(warped);
-        await runOcrPipeline(warped);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Perspective correction failed');
-        setStep('upload');
+      } finally {
         setIsProcessing(false);
         setProcessingStatus('');
       }
     },
-    [preprocessedImages, runOcrPipeline]
+    [originalImages]
   );
 
-  /** Called when user skips perspective correction */
-  const handlePerspectiveSkip = useCallback(() => {
+  /** Called when user clicks "Scan" — proceed to OCR with current images */
+  const handlePerspectiveScan = useCallback(() => {
     runOcrPipeline(preprocessedImages);
   }, [preprocessedImages, runOcrPipeline]);
+
+  /** Called when user clicks "Reset" — restore original EXIF-corrected images */
+  const handlePerspectiveReset = useCallback(() => {
+    setPreprocessedImages(originalImages);
+  }, [originalImages]);
 
   const handleSelectMove = useCallback((index: number) => {
     setGameState((prev) => ({ ...prev, selectedMoveIndex: index }));
@@ -565,8 +572,9 @@ export default function App() {
           <div className="py-4 sm:py-8">
             <PerspectiveEditor
               images={preprocessedImages}
-              onApply={handlePerspectiveApply}
-              onSkip={handlePerspectiveSkip}
+              onApplyPreview={handlePerspectivePreview}
+              onScan={handlePerspectiveScan}
+              onReset={handlePerspectiveReset}
               isProcessing={isProcessing}
             />
           </div>
