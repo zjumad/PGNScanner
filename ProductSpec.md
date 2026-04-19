@@ -260,3 +260,26 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - TailwindCSS v4 for styling.
 - No backend — everything runs client-side. API keys are sent directly from the browser.
 - No test framework is currently configured.
+
+## Design References
+
+The following external resources have informed the design and techniques used in this app:
+
+### From Chess Score Sheet to ICR with OpenCV and Image Recognition
+- **Author**: Marek Śmigielski
+- **Link**: https://medium.com/@mareksmigielski/from-chess-score-sheet-to-icr-with-opencv-and-image-recognition-f7bed2cc3de4
+- **Key techniques referenced**:
+  - **Perspective transform**: Detect 4 corners of the score sheet, compute a homography matrix, and warp to a flat rectangle. Applied in our app as the interactive 4-corner perspective correction in the upload step (pure JS implementation using mesh-based canvas warp instead of OpenCV.js).
+  - **Grid detection via edge/line detection**: Canny edges + Hough line transform to find grid lines. Our app delegates grid detection to the vision model via prompting instead.
+  - **Cell segmentation**: Crop individual cells from the rectified grid for per-cell OCR. Our approach is similar — we use grid descriptors from the model to compute per-row crops for the Sheet column.
+  - **Grayscale + adaptive thresholding**: Preprocessing to improve handwriting contrast. Potential future enhancement for our preprocessing pipeline.
+
+### ChessReader: Deep Learning Based Automated Chess Scoresheet Recognition
+- **Authors**: M. Hostettler, O. Boner (ZHAW — Zurich University of Applied Sciences, 2022)
+- **Link**: https://www.zhaw.ch/storage/engineering/institute-zentren/cai/studentische_arbeiten/Herbst_2022-NLP/PA22_ciel_ChessReader_Hostettler_Boner.pdf
+- **Key techniques referenced**:
+  - **CNN + LSTM pipeline**: Uses a Convolutional Neural Network to extract visual features from each segmented cell, then an LSTM to decode the handwritten text sequence. This two-stage approach handles handwriting variation and exploits sequential dependencies in chess notation (e.g., piece letter followed by file/rank).
+  - **Cell-level segmentation**: Score sheets are treated as grids; each cell is individually segmented using binarization, contour detection, and morphological operations before recognition.
+  - **Chess engine validation**: Recognized moves are validated against legal moves using a chess engine, similar to our chess.js-based validation with fuzzy matching.
+  - **Confidence scoring and manual correction UI**: OCR outputs get confidence values; a correction interface lets users fix misreads — same pattern as our Review step.
+  - **Potential reuse**: The CNN+LSTM approach could serve as an alternative or supplementary OCR backend if we ever move beyond API-based vision models to a local/offline recognition pipeline. The cell-level segmentation concept is already partially reflected in our grid descriptor + per-row crop approach.
