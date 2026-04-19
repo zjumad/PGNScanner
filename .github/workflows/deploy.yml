@@ -38,6 +38,7 @@ jobs:
         working-directory: web
         env:
           VITE_GITHUB_TOKEN: ${{ secrets.VITE_GITHUB_TOKEN }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
       - uses: actions/configure-pages@v5
 

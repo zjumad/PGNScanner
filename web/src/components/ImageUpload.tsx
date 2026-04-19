@@ -1,7 +1,8 @@
 import { useCallback, useState, useRef } from 'react';
+import type { ApiProvider } from '../services/visionApi';
 
 interface ImageUploadProps {
-  onImagesSelected: (files: File[]) => void;
+  onImagesSelected: (files: File[], provider: ApiProvider) => void;
   isProcessing: boolean;
   processingStatus?: string;
 }
@@ -10,6 +11,9 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
   const [previews, setPreviews] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [provider, setProvider] = useState<ApiProvider>(() => {
+    return (localStorage.getItem('pgn_scanner_provider') as ApiProvider) || 'gemini';
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback(
@@ -41,8 +45,8 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
   );
 
   const handleSubmit = useCallback(() => {
-    if (files.length > 0) onImagesSelected(files);
-  }, [files, onImagesSelected]);
+    if (files.length > 0) onImagesSelected(files, provider);
+  }, [files, onImagesSelected, provider]);
 
   return (
     <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
@@ -129,23 +133,41 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
       </div>
 
       {previews.length > 0 && !isProcessing && (
-        <div className="flex gap-3 items-center">
-          <button
-            onClick={handleSubmit}
-            className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm"
-          >
-            Scan {files.length === 1 ? 'Image' : `${files.length} Images`}
-          </button>
-          <button
-            onClick={() => {
-              previews.forEach((url) => URL.revokeObjectURL(url));
-              setPreviews([]);
-              setFiles([]);
-            }}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
-          >
-            Clear all
-          </button>
+        <div className="flex flex-col gap-3 items-center w-full max-w-xs">
+          {/* Model selector */}
+          <div className="flex items-center gap-2 w-full">
+            <label className="text-xs text-gray-500 font-medium whitespace-nowrap">Model:</label>
+            <select
+              value={provider}
+              onChange={(e) => {
+                const p = e.target.value as ApiProvider;
+                setProvider(p);
+                localStorage.setItem('pgn_scanner_provider', p);
+              }}
+              className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="gemini">Gemini 2.5 Flash</option>
+              <option value="github">GPT-4o (GitHub Models)</option>
+            </select>
+          </div>
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={handleSubmit}
+              className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm"
+            >
+              Scan {files.length === 1 ? 'Image' : `${files.length} Images`}
+            </button>
+            <button
+              onClick={() => {
+                previews.forEach((url) => URL.revokeObjectURL(url));
+                setPreviews([]);
+                setFiles([]);
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Clear all
+            </button>
+          </div>
         </div>
       )}
 

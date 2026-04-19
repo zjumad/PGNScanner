@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState } from './types';
 import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
 import { recognizeScoreSheet, fileToBase64, mergeOcrResults } from './services/visionApi';
+import type { ApiProvider } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
@@ -99,7 +100,7 @@ export default function App() {
   }, [gameState.imageUrls]);
 
   const handleImagesSelected = useCallback(
-    async (files: File[]) => {
+    async (files: File[], provider: ApiProvider = 'gemini') => {
       imageFilesRef.current = files;
 
       setIsProcessing(true);
@@ -113,7 +114,7 @@ export default function App() {
         for (let i = 0; i < files.length; i++) {
           setProcessingStatus(`Recognizing image ${i + 1} of ${files.length}...`);
           const base64 = await fileToBase64(files[i]);
-          const result = await recognizeScoreSheet(base64, files[i].type);
+          const result = await recognizeScoreSheet(base64, files[i].type, provider);
           ocrResults.push(result);
         }
 
