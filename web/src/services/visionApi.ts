@@ -61,37 +61,40 @@ Return your response as a JSON object with this exact structure:
     "eco": "",
     "result": "1-0 | 0-1 | 1/2-1/2 | *"
   },
+  "grid": {
+    "rotation": 0,
+    "leftHalf": { "x": 0.08, "y": 0.15, "width": 0.38, "height": 0.72, "rows": 30 },
+    "rightHalf": { "x": 0.54, "y": 0.15, "width": 0.38, "height": 0.72, "rows": 30 }
+  },
   "moves": [
     {
       "moveNumber": 1,
       "whiteMove": "e4", "blackMove": "e5",
-      "whiteConfidence": "high", "blackConfidence": "high",
-      "rowBBox": { "x": 0.05, "y": 0.18, "width": 0.35, "height": 0.02 },
-      "rotation": 0
+      "whiteConfidence": "high", "blackConfidence": "high"
     }
   ]
 }
 
-ROW BOUNDING BOX INSTRUCTIONS (rowBBox):
-For EVERY move, you MUST independently locate the exact position of the row containing the White and Black notation cells in the image. Do NOT estimate positions by assuming uniform grid spacing — each row must be individually found.
+GRID DESCRIPTOR INSTRUCTIONS:
+You MUST provide a "grid" object describing the move table layout in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
 
-- Coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
-- "x": left edge of the White notation cell (excluding the printed move number)
-- "y": top edge of the row
-- "width": width spanning from the left edge of the White cell to the right edge of the Black cell
-- "height": height of the row
-- The bounding box covers BOTH the White and Black notation cells as a single region, but NOT the printed move number column.
-- For moves 1-30 (left half of sheet): rows are in the left portion of the image.
-- For moves 31-60 (right half of sheet): rows are in the right portion of the image.
-- If the photo is rotated/sideways, the coordinates should still be relative to the image as-is (before any rotation correction).
+- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. The coordinates below are relative to the image AS-IS (before rotation).
+- "leftHalf": Bounding box of the LEFT move grid (moves 1-30). 
+  - "x": left edge of the White notation column (excluding printed move numbers)
+  - "y": top edge of row 1
+  - "width": width from left edge of White column to right edge of Black column
+  - "height": total height from top of row 1 to bottom of last used row
+  - "rows": number of rows in this half (typically 30)
+- "rightHalf": Same as leftHalf but for the RIGHT move grid (moves 31-60). If no moves exist in the right half, set all values to 0.
 
-ROTATION:
-- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient this portion of the score sheet upright. Usually all moves share the same rotation. 0 means the text is already upright.
+The bounding boxes should cover ONLY the notation cells (White + Black columns), NOT the printed move number column.
 
 Confidence levels:
 - "high": clearly readable
 - "medium": somewhat unclear but best guess
 - "low": very hard to read, uncertain
+
+Do NOT include rowBBox in individual moves — the grid descriptor is used to compute row positions.
 
 Return ONLY valid JSON, no markdown code blocks or other text.`;
 
@@ -131,9 +134,66 @@ function parseBBox(raw: unknown): import('../types').CellBoundingBox | undefined
   return { x, y, width: w, height: h };
 }
 
+interface GridHalf {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rows: number;
+}
+
+interface GridDescriptor {
+  rotation: 0 | 90 | 180 | 270;
+  leftHalf: GridHalf;
+  rightHalf: GridHalf;
+}
+
+function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const g = raw as Record<string, unknown>;
+  const rot = Number(g.rotation);
+  const rotation = (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : 0) as 0 | 90 | 180 | 270;
+
+  const parseHalf = (h: unknown): GridHalf | undefined => {
+    if (!h || typeof h !== 'object') return undefined;
+    const hh = h as Record<string, unknown>;
+    const x = Number(hh.x); const y = Number(hh.y);
+    const w = Number(hh.width); const height = Number(hh.height);
+    const rows = Number(hh.rows);
+    if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(height) || isNaN(rows)) return undefined;
+    return { x, y, width: w, height, rows: Math.max(1, rows) };
+  };
+
+  const leftHalf = parseHalf(g.leftHalf);
+  if (!leftHalf) return undefined;
+  const rightHalf = parseHalf(g.rightHalf) || { x: 0, y: 0, width: 0, height: 0, rows: 30 };
+
+  return { rotation, leftHalf, rightHalf };
+}
+
+function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
+  const half = moveNumber <= grid.leftHalf.rows ? grid.leftHalf : grid.rightHalf;
+  const rowIndex = moveNumber <= grid.leftHalf.rows
+    ? moveNumber - 1
+    : moveNumber - grid.leftHalf.rows - 1;
+  const rowHeight = half.height / half.rows;
+
+  return {
+    bbox: {
+      x: half.x,
+      y: half.y + rowIndex * rowHeight,
+      width: half.width,
+      height: rowHeight,
+    },
+    rotation: grid.rotation,
+  };
+}
+
 function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
   const header = parsed.header as Record<string, unknown> | undefined;
   const moves = parsed.moves as Record<string, unknown>[] | undefined;
+  const grid = parseGridDescriptor(parsed.grid);
+
   return {
     header: {
       event: (header?.event as string) || '',
@@ -148,15 +208,29 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
       result: (header?.result as string) || '*',
     },
     moves: (moves || []).map((m) => {
-      const rot = Number(m.rotation);
+      const moveNum = m.moveNumber as number;
+      // Compute rowBBox from grid descriptor if available; fall back to per-move rowBBox
+      let rowBBox: import('../types').CellBoundingBox | undefined;
+      let rotation: 0 | 90 | 180 | 270 | undefined;
+
+      if (grid && moveNum) {
+        const computed = computeRowBBox(moveNum, grid);
+        rowBBox = computed.bbox;
+        rotation = computed.rotation;
+      } else {
+        rowBBox = parseBBox(m.rowBBox);
+        const rot = Number(m.rotation);
+        rotation = (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : undefined) as 0 | 90 | 180 | 270 | undefined;
+      }
+
       return {
-        moveNumber: m.moveNumber as number,
+        moveNumber: moveNum,
         whiteMove: (m.whiteMove as string) || '',
         blackMove: (m.blackMove as string) || '',
         whiteConfidence: (m.whiteConfidence as 'high' | 'medium' | 'low') || 'medium',
         blackConfidence: (m.blackConfidence as 'high' | 'medium' | 'low') || 'medium',
-        rowBBox: parseBBox(m.rowBBox),
-        rotation: (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : undefined) as 0 | 90 | 180 | 270 | undefined,
+        rowBBox,
+        rotation,
       };
     }),
   };

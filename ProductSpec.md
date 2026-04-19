@@ -118,6 +118,7 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 
 #### Debug Info tab
 - show the text of OCR output
+- show the pictures as uploaded
 
 ## Move Validation Engine
 
