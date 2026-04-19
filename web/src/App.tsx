@@ -1,0 +1,289 @@
+import { useState, useCallback, useRef } from 'react';
+import type { AppStep, GameHeader, GameState } from './types';
+import { validateMoveSequence, revalidateFromIndex, generatePgn } from './services/chessEngine';
+import { recognizeScoreSheet, fileToBase64 } from './services/visionApi';
+import type { ApiProvider } from './services/visionApi';
+import ImageUpload from './components/ImageUpload';
+import HeaderEditor from './components/HeaderEditor';
+import MoveList from './components/MoveList';
+import BoardViewer from './components/BoardViewer';
+import ApiKeyDialog from './components/ApiKeyDialog';
+import './index.css';
+
+const DEFAULT_HEADER: GameHeader = {
+  event: '',
+  date: '',
+  round: '',
+  white: '',
+  black: '',
+  whiteElo: '',
+  blackElo: '',
+  opening: '',
+  eco: '',
+  result: '*',
+};
+
+const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+export default function App() {
+  const [step, setStep] = useState<AppStep>('upload');
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiProvider, setApiProvider] = useState<ApiProvider>('gemini');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [gameState, setGameState] = useState<GameState>({
+    header: DEFAULT_HEADER,
+    moves: [],
+    selectedMoveIndex: -1,
+  });
+  const imageFileRef = useRef<File | null>(null);
+
+  const handleApiKeySet = useCallback((key: string, provider: ApiProvider) => {
+    setApiKey(key);
+    setApiProvider(provider);
+  }, []);
+
+  const handleImageSelected = useCallback(
+    async (file: File) => {
+      imageFileRef.current = file;
+
+      if (!apiKey) {
+        setError('Please set your API key first.');
+        return;
+      }
+
+      setIsProcessing(true);
+      setError(null);
+      setStep('processing');
+
+      try {
+        const base64 = await fileToBase64(file);
+        const result = await recognizeScoreSheet(base64, apiKey, file.type, apiProvider);
+
+        const rawMoves = result.moves.map((m) => ({
+          moveNumber: m.moveNumber,
+          white: m.whiteMove,
+          black: m.blackMove,
+        }));
+
+        const validatedMoves = validateMoveSequence(rawMoves);
+
+        for (const vm of validatedMoves) {
+          const ocrMove = result.moves.find((m) => m.moveNumber === vm.moveNumber);
+          if (ocrMove) {
+            vm.rawOcr = vm.color === 'w' ? ocrMove.whiteMove : ocrMove.blackMove;
+          }
+        }
+
+        setGameState({
+          header: result.header,
+          moves: validatedMoves,
+          selectedMoveIndex: validatedMoves.length > 0 ? validatedMoves.length - 1 : -1,
+        });
+        setStep('review');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to process image');
+        setStep('upload');
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [apiKey, apiProvider]
+  );
+
+  const handleSelectMove = useCallback((index: number) => {
+    setGameState((prev) => ({ ...prev, selectedMoveIndex: index }));
+  }, []);
+
+  const handleCorrectMove = useCallback((index: number, newSan: string) => {
+    setGameState((prev) => {
+      const newMoves = revalidateFromIndex(prev.moves, index, newSan);
+      return {
+        ...prev,
+        moves: newMoves,
+        selectedMoveIndex: Math.min(index, newMoves.length - 1),
+      };
+    });
+  }, []);
+
+  const handleHeaderChange = useCallback((header: GameHeader) => {
+    setGameState((prev) => ({ ...prev, header }));
+  }, []);
+
+  const handleExportPgn = useCallback(() => {
+    const pgn = generatePgn(gameState.header, gameState.moves);
+    const blob = new Blob([pgn], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const datePart = gameState.header.date || 'game';
+    const whitePart = gameState.header.white || 'White';
+    const blackPart = gameState.header.black || 'Black';
+    a.href = url;
+    a.download = `${datePart} - ${gameState.header.round || 'R'} - ${whitePart} - ${blackPart}.pgn`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [gameState]);
+
+  const handleStartOver = useCallback(() => {
+    setStep('upload');
+    setGameState({ header: DEFAULT_HEADER, moves: [], selectedMoveIndex: -1 });
+    setError(null);
+    imageFileRef.current = null;
+  }, []);
+
+  const handleNavigate = useCallback(
+    (direction: 'prev' | 'next' | 'start' | 'end') => {
+      setGameState((prev) => {
+        let newIndex = prev.selectedMoveIndex;
+        switch (direction) {
+          case 'prev':
+            newIndex = Math.max(-1, prev.selectedMoveIndex - 1);
+            break;
+          case 'next':
+            newIndex = Math.min(prev.moves.length - 1, prev.selectedMoveIndex + 1);
+            break;
+          case 'start':
+            newIndex = -1;
+            break;
+          case 'end':
+            newIndex = prev.moves.length - 1;
+            break;
+        }
+        return { ...prev, selectedMoveIndex: newIndex };
+      });
+    },
+    []
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (step !== 'review') return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        handleNavigate('prev');
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleNavigate('next');
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        handleNavigate('start');
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        handleNavigate('end');
+      }
+    },
+    [step, handleNavigate]
+  );
+
+  const currentFen =
+    gameState.selectedMoveIndex >= 0 && gameState.moves[gameState.selectedMoveIndex]?.isValid
+      ? gameState.moves[gameState.selectedMoveIndex].fenAfter
+      : gameState.selectedMoveIndex === -1
+        ? STARTING_FEN
+        : gameState.moves[gameState.selectedMoveIndex]?.fenBefore || STARTING_FEN;
+
+  return (
+    <div
+      className="min-h-screen bg-gray-100 text-gray-900"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{'\u265F'}</span>
+            <h1 className="text-xl font-bold text-gray-800">PGN Scanner</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <ApiKeyDialog onKeySet={handleApiKeySet} />
+            {step === 'review' && (
+              <button
+                onClick={handleStartOver}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                New Scan
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 mt-4">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+              {'\u2715'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {(step === 'upload' || step === 'processing') && (
+          <div className="py-12">
+            <ImageUpload onImageSelected={handleImageSelected} isProcessing={isProcessing} />
+          </div>
+        )}
+
+        {step === 'review' && (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6">
+            <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+              <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
+              <div className="flex-1 min-h-0">
+                <MoveList
+                  moves={gameState.moves}
+                  selectedIndex={gameState.selectedMoveIndex}
+                  onSelectMove={handleSelectMove}
+                  onCorrectMove={handleCorrectMove}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-4">
+              <BoardViewer fen={currentFen} />
+
+              <div className="flex items-center gap-2">
+                <button onClick={() => handleNavigate('start')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to start">{'\u23EE'}</button>
+                <button onClick={() => handleNavigate('prev')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Previous move">{'\u25C0'}</button>
+                <span className="px-3 text-sm text-gray-500 font-mono min-w-[80px] text-center">
+                  {gameState.selectedMoveIndex >= 0
+                    ? `${gameState.moves[gameState.selectedMoveIndex].moveNumber}${gameState.moves[gameState.selectedMoveIndex].color === 'w' ? '.' : '...'}`
+                    : 'Start'}
+                </span>
+                <button onClick={() => handleNavigate('next')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Next move">{'\u25B6'}</button>
+                <button onClick={() => handleNavigate('end')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to end">{'\u23ED'}</button>
+              </div>
+
+              <button
+                onClick={handleExportPgn}
+                className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md"
+              >
+                Export PGN
+              </button>
+
+              <div className="w-full bg-gray-800 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                <pre className="whitespace-pre-wrap">
+                  {generatePgn(gameState.header, gameState.moves)}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Image</h3>
+                {imageFileRef.current && (
+                  <img
+                    src={URL.createObjectURL(imageFileRef.current)}
+                    alt="Score sheet"
+                    className="w-full rounded-md"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
