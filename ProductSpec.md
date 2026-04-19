@@ -59,8 +59,8 @@ The app follows this workflow:
   - **Gemini 3 Flash** — Google's Gemini API
   - **Gemini 3.1 Flash Lite** — Google's Gemini API
   - **Gemini 2.5 Flash Lite** — Google's Gemini API (fastest, cost-efficient)
-  - **GPT-4o Mini (GitHub Models)** — OpenAI GPT-4o Mini via GitHub Models inference API
-  - **GPT-4o (GitHub Models)** — OpenAI GPT-4o via GitHub Models inference API
+  - **GPT-5 (GitHub Models)** — OpenAI GPT-5 via GitHub Models inference API
+  - **GPT-5 Mini (GitHub Models)** — OpenAI GPT-5 Mini via GitHub Models inference API
 - The selected model is persisted in localStorage across sessions.
   
 - The user uploads one or more photos of a US Chess Official Score Sheet by:
@@ -215,7 +215,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
      - `gemini-3.1-flash-lite`
      - `gemini-2.5-flash-lite` (fastest/cheapest)
   -  The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
-- **GitHub Models** (`gpt-4o-mini`, `gpt-4o`): OpenAI GPT-4o Mini and GPT-4o via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
+- **GitHub Models** (`gpt-5`, `gpt-5-mini`): OpenAI GPT-5 and GPT-5 Mini via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
 - Both providers use raw `fetch` calls (no SDK).
 - Temperature is set to 0 for deterministic output. Max output tokens: 16384.
 - No user-facing API key configuration — keys are embedded at build time.
@@ -224,7 +224,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - The model list is ordered as the order they are mentioned in this file.
 - **Per-model prompt optimization**: The system prompt is split into a shared base (chess notation rules, sheet layout, response format) and model-specific grid descriptor instructions:
   - **Gemini**: Standard grid instructions; these models handle spatial localization well.
-  - **GPT-4o / GPT-4o Mini**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common GPT-4o failure of including the header/event info in the grid bounding box.
+  - **GPT-5 / GPT-5 Mini**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common failure of including the header/event info in the grid bounding box.
 - **Grid validation**: The app validates returned grid descriptors before using them (coordinates in [0,1], nonzero dimensions, reasonable row heights, grid starts below header area). Invalid grids are rejected and fall back to per-move bounding boxes.
 - **Grid calibration**: Users can manually recalibrate the grid in the Debug tab by clicking two points (top-left of row 1, bottom-right of last row) on the uploaded image. This overrides the model's grid and recomputes all move bounding boxes.
 

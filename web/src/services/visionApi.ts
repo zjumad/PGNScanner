@@ -8,8 +8,8 @@ export type ModelId =
   | 'gemini-3-flash'
   | 'gemini-3.1-flash-lite'
   | 'gemini-2.5-flash-lite'
-  | 'gpt-4o'
-  | 'gpt-4o-mini';
+  | 'gpt-5'
+  | 'gpt-5-mini';
 
 export interface ModelOption {
   id: ModelId;
@@ -23,8 +23,8 @@ export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', apiModelId: 'gemini-3-flash-preview' },
   { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', provider: 'gemini', apiModelId: 'gemini-3.1-flash-lite-preview' },
   { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', provider: 'gemini', apiModelId: 'gemini-2.5-flash-lite' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini (GitHub)', provider: 'github', apiModelId: 'gpt-4o-mini' },
-  { id: 'gpt-4o', label: 'GPT-4o (GitHub)', provider: 'github', apiModelId: 'gpt-4o' },
+  { id: 'gpt-5', label: 'GPT-5 (GitHub)', provider: 'github', apiModelId: 'openai/gpt-5' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini (GitHub)', provider: 'github', apiModelId: 'openai/gpt-5-mini' },
 ];
 
 export function getModelOption(modelId: ModelId): ModelOption {
@@ -218,8 +218,9 @@ CRITICAL — "rows" must be COUNTED, not assumed:
 The bounding boxes must cover ONLY the handwritten notation cells (White + Black columns), NOT the printed move number column.`;
 
 function getSystemPrompt(modelId: ModelId): string {
-  // GPT-4o needs extra-explicit grid anchoring; others use standard instructions
-  const gridInstructions = modelId === 'gpt-4o' ? GPT4O_GRID_INSTRUCTIONS : GEMINI_GRID_INSTRUCTIONS;
+  // GitHub/OpenAI models need extra-explicit grid anchoring; Gemini uses standard instructions
+  const isGitHub = getModelOption(modelId).provider === 'github';
+  const gridInstructions = isGitHub ? GPT4O_GRID_INSTRUCTIONS : GEMINI_GRID_INSTRUCTIONS;
   return BASE_PROMPT + gridInstructions;
 }
 
@@ -580,7 +581,7 @@ async function recognizeWithGitHub(
           ],
         },
       ],
-      max_tokens: 16384,
+      max_tokens: 32768,
       temperature: 0,
     }),
   });
