@@ -20,8 +20,6 @@ interface MoveListProps {
     current: number;
     onPrev: () => void;
     onNext: () => void;
-    onRotateCW: () => void;
-    onRotateCCW: () => void;
   };
   selectedMove?: ValidatedMove | null;
 }
@@ -53,7 +51,7 @@ export default function MoveList({
 
   // Get the cropped image background style for a given move pair row.
   // Uses bounding box data from OCR when available; falls back to heuristic.
-  const getCropStyle = (bbox?: import('../types').CellBoundingBox, moveNumber?: number, rotation?: 0 | 90 | 180 | 270): React.CSSProperties | null => {
+  const getCropStyle = (bbox?: import('../types').CellBoundingBox, moveNumber?: number): React.CSSProperties | null => {
     if (!imageUrls || imageUrls.length === 0) return null;
 
     // Determine which image to use
@@ -96,9 +94,6 @@ export default function MoveList({
         backgroundPositionY: `${posY}%`,
         backgroundRepeat: 'no-repeat',
       };
-      if (rotation) {
-        style.transform = `rotate(${rotation}deg)`;
-      }
       return style;
     }
 
@@ -343,7 +338,7 @@ export default function MoveList({
                 {/* Image crop cell */}
                 {hasImages && (
                   <div
-                    style={{ width: '60%', ...(getCropStyle(pair.white?.move.bbox ?? pair.black?.move.bbox, pair.moveNumber, pair.white?.move.rotation ?? pair.black?.move.rotation) || {}) }}
+                    style={{ width: '60%', ...(getCropStyle(pair.white?.move.bbox ?? pair.black?.move.bbox, pair.moveNumber) || {}) }}
                     className="border-x border-gray-100"
                   />
                 )}

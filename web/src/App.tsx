@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState } from './types';
 import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
-import { recognizeScoreSheet, fileToBase64, mergeOcrResults, computeRowBBox } from './services/visionApi';
+import { recognizeScoreSheet, mergeOcrResults, computeRowBBox } from './services/visionApi';
+import { correctImageOrientation } from './services/imagePreprocess';
 import type { ModelId, GridDescriptor } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
@@ -31,7 +32,6 @@ export default function App() {
   const [processingStatus, setProcessingStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'board' | 'info' | 'debug'>('board');
-  const [_imageRotations, setImageRotations] = useState<(0 | 90 | 180 | 270)[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [rawOcrJson, setRawOcrJson] = useState<string>('');
   const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
@@ -111,12 +111,18 @@ export default function App() {
       setStep('processing');
 
       try {
-        // OCR each image sequentially
-        const ocrResults = [];
+        // Preprocess images: correct EXIF orientation and normalize to JPEG
+        setProcessingStatus('Correcting image orientation...');
+        const processed = [];
         for (let i = 0; i < files.length; i++) {
-          setProcessingStatus(`Recognizing image ${i + 1} of ${files.length}...`);
-          const base64 = await fileToBase64(files[i]);
-          const result = await recognizeScoreSheet(base64, files[i].type, modelId);
+          processed.push(await correctImageOrientation(files[i]));
+        }
+
+        // OCR each preprocessed image sequentially
+        const ocrResults = [];
+        for (let i = 0; i < processed.length; i++) {
+          setProcessingStatus(`Recognizing image ${i + 1} of ${processed.length}...`);
+          const result = await recognizeScoreSheet(processed[i].base64, processed[i].mimeType, modelId);
           ocrResults.push(result);
         }
 
@@ -130,7 +136,6 @@ export default function App() {
           white: m.whiteMove,
           black: m.blackMove,
           rowBBox: m.rowBBox,
-          rotation: m.rotation,
         }));
 
         const validatedMoves = validateMoveSequence(rawMoves);
@@ -149,7 +154,7 @@ export default function App() {
         const speculative = buildSpeculativeTail(rawMoves, validatedMoves.length, lastFen);
         const allMoves = [...validatedMoves, ...speculative];
 
-        const imageUrls = files.map((f) => URL.createObjectURL(f));
+        const imageUrls = processed.map((p) => p.url);
 
         setGameState((prev) => {
           prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
@@ -162,7 +167,6 @@ export default function App() {
             imageUrls,
           };
         });
-        setImageRotations(files.map(() => 0));
         setActiveImageIndex(0);
         setStep('review');
       } catch (err) {
@@ -275,7 +279,6 @@ export default function App() {
 
   const handleStartOver = useCallback(() => {
     setStep('upload');
-    setImageRotations([]);
     setActiveImageIndex(0);
     undoStackRef.current = [];
     redoStackRef.current = [];
@@ -302,7 +305,7 @@ export default function App() {
       ...prev,
       moves: prev.moves.map((m) => {
         const computed = computeRowBBox(m.moveNumber, newGrid);
-        return { ...m, bbox: computed.bbox, rotation: computed.rotation };
+        return { ...m, bbox: computed.bbox };
       }),
     }));
   }, []);
@@ -577,16 +580,6 @@ export default function App() {
                         current: activeImageIndex,
                         onPrev: () => setActiveImageIndex(Math.max(0, activeImageIndex - 1)),
                         onNext: () => setActiveImageIndex(Math.min(gameState.imageUrls.length - 1, activeImageIndex + 1)),
-                        onRotateCW: () => setImageRotations(prev => {
-                          const next = [...prev];
-                          next[activeImageIndex] = ((next[activeImageIndex] + 90) % 360) as 0 | 90 | 180 | 270;
-                          return next;
-                        }),
-                        onRotateCCW: () => setImageRotations(prev => {
-                          const next = [...prev];
-                          next[activeImageIndex] = ((next[activeImageIndex] + 270) % 360) as 0 | 90 | 180 | 270;
-                          return next;
-                        }),
                       } : undefined}
                       selectedMove={selectedMove}
                     />
@@ -730,7 +723,6 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
       const topLeft = { x: Math.min(anchor1.x, pt.x), y: Math.min(anchor1.y, pt.y) };
       const bottomRight = { x: Math.max(anchor1.x, pt.x), y: Math.max(anchor1.y, pt.y) };
       const newGrid: GridDescriptor = {
-        rotation: grid?.rotation || 0,
         leftHalf: {
           x: topLeft.x,
           y: topLeft.y,

@@ -53,7 +53,6 @@ export interface GridHalf {
 }
 
 export interface GridDescriptor {
-  rotation: 0 | 90 | 180 | 270;
   leftHalf: GridHalf;
   rightHalf: GridHalf;
   thirdHalf?: GridHalf;
@@ -63,7 +62,6 @@ export interface GridDescriptor {
 const BASE_PROMPT = `You are a chess score sheet OCR system. You read handwritten chess notation from US Chess Official Score Sheets.
 
 SHEET LAYOUT:
-- The photo is often rotated 90° (taken sideways). Detect orientation from the printed text.
 - Header fields at top: Event, Date, Round, Board, Section, White, Black, Opening, Pairing No.
 - Move grid: rows split into two (or occasionally three) halves side-by-side. Common layouts:
   - 30 rows × 2 halves (1-30 left, 31-60 right) — US Chess Official, Daisy Paper
@@ -130,7 +128,6 @@ Return your response as a JSON object with this exact structure:
     "result": "1-0 | 0-1 | 1/2-1/2 | *"
   },
   "grid": {
-    "rotation": 0,
     "leftHalf": { "x": 0.08, "y": 0.15, "width": 0.38, "height": 0.72, "rows": 25 },
     "rightHalf": { "x": 0.54, "y": 0.15, "width": 0.38, "height": 0.72, "rows": 25 }
   },
@@ -146,9 +143,8 @@ Return your response as a JSON object with this exact structure:
 }
 
 GRID DESCRIPTOR INSTRUCTIONS:
-You MUST provide a "grid" object describing the move table layout in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
+You MUST provide a "grid" object describing the move table layout in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the image dimensions (which has already been corrected for orientation), where (0,0) = top-left and (1,1) = bottom-right.
 
-- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. The coordinates below are relative to the image AS-IS (before rotation).
 - "leftHalf": Bounding box of the FIRST (leftmost) move grid.
   - "x": left edge of the White notation column (excluding printed move numbers)
   - "y": top edge of row 1 (the FIRST move row, NOT the header area)
@@ -178,7 +174,6 @@ Return your response as a JSON object with this exact structure:
     "result": "1-0 | 0-1 | 1/2-1/2 | *"
   },
   "grid": {
-    "rotation": 0,
     "leftHalf": { "x": 0.08, "y": 0.22, "width": 0.38, "height": 0.65, "rows": 25 },
     "rightHalf": { "x": 0.54, "y": 0.22, "width": 0.38, "height": 0.65, "rows": 25 }
   },
@@ -194,7 +189,7 @@ Return your response as a JSON object with this exact structure:
 }
 
 GRID DESCRIPTOR INSTRUCTIONS — READ CAREFULLY:
-You MUST provide a "grid" object locating the move table in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
+You MUST provide a "grid" object locating the move table in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the image dimensions (which has already been corrected for orientation), where (0,0) = top-left and (1,1) = bottom-right.
 
 CRITICAL — How to find the correct "y" (top edge):
 1. Find the printed number "1" in the left move grid — this is the FIRST move row.
@@ -205,7 +200,6 @@ CRITICAL — How to find the correct "y" (top edge):
 SELF-CHECK before returning: Verify that leftHalf.y points to the row containing the printed number "1" (first move), NOT to the Event/Date/Player header fields above it.
 
 Field definitions:
-- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. Coordinates are relative to the image AS-IS (before rotation).
 - "leftHalf": Bounding box of the FIRST (leftmost) move grid.
   - "x": left edge of the White notation column (EXCLUDE the printed move number column on the left)
   - "y": top edge of ROW 1 — the first row with a printed move number "1". NOT the header. NOT the column labels.
@@ -268,8 +262,6 @@ function parseBBox(raw: unknown): import('../types').CellBoundingBox | undefined
 function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const g = raw as Record<string, unknown>;
-  const rot = Number(g.rotation);
-  const rotation = (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : 0) as 0 | 90 | 180 | 270;
 
   const parseHalf = (h: unknown): GridHalf | undefined => {
     if (!h || typeof h !== 'object') return undefined;
@@ -289,11 +281,11 @@ function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
   // Sanity checks — reject obviously bad grids
   if (!validateGridHalf(leftHalf)) return undefined;
   if (rightHalf.width > 0 && !validateGridHalf(rightHalf)) {
-    return { rotation, leftHalf, rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: leftHalf.rows } };
+    return { leftHalf, rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: leftHalf.rows } };
   }
   const validThird = thirdHalf && thirdHalf.width > 0 && validateGridHalf(thirdHalf) ? thirdHalf : undefined;
 
-  return { rotation, leftHalf, rightHalf, ...(validThird ? { thirdHalf: validThird } : {}) };
+  return { leftHalf, rightHalf, ...(validThird ? { thirdHalf: validThird } : {}) };
 }
 
 /** Validate a grid half has reasonable normalized values */
@@ -314,14 +306,14 @@ function validateGridHalf(half: GridHalf): boolean {
   return true;
 }
 
-export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
+export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox } {
   const leftRows = grid.leftHalf.rows;
   const rightRows = grid.rightHalf.width > 0 ? grid.rightHalf.rows : 0;
   const thirdRows = grid.thirdHalf && grid.thirdHalf.width > 0 ? grid.thirdHalf.rows : 0;
   const totalRows = leftRows + rightRows + thirdRows;
 
   if (moveNumber > totalRows || moveNumber < 1) {
-    return { bbox: { x: 0, y: 0, width: 0, height: 0 }, rotation: grid.rotation };
+    return { bbox: { x: 0, y: 0, width: 0, height: 0 } };
   }
 
   let half: GridHalf;
@@ -345,7 +337,6 @@ export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox
       width: half.width,
       height: rowHeight,
     },
-    rotation: grid.rotation,
   };
 }
 
@@ -371,16 +362,12 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
       const moveNum = m.moveNumber as number;
       // Compute rowBBox from grid descriptor if available; fall back to per-move rowBBox
       let rowBBox: import('../types').CellBoundingBox | undefined;
-      let rotation: 0 | 90 | 180 | 270 | undefined;
 
       if (grid && moveNum) {
         const computed = computeRowBBox(moveNum, grid);
         rowBBox = computed.bbox;
-        rotation = computed.rotation;
       } else {
         rowBBox = parseBBox(m.rowBBox);
-        const rot = Number(m.rotation);
-        rotation = (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : undefined) as 0 | 90 | 180 | 270 | undefined;
       }
 
       return {
@@ -390,7 +377,6 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
         whiteConfidence: (m.whiteConfidence as 'high' | 'medium' | 'low') || 'medium',
         blackConfidence: (m.blackConfidence as 'high' | 'medium' | 'low') || 'medium',
         rowBBox,
-        rotation,
       };
     }),
     grid: grid || undefined,
@@ -484,7 +470,6 @@ function stripToLastCompleteValue(s: string): string {
  */
 function stripToLastCompleteElement(s: string): string {
   // Find the last `}` that closes a complete move object
-  let depth = 0;
   let inStr = false;
   let esc = false;
   let lastCompleteObj = -1;
@@ -495,8 +480,7 @@ function stripToLastCompleteElement(s: string): string {
     if (ch === '\\') { esc = true; continue; }
     if (ch === '"') { inStr = !inStr; continue; }
     if (inStr) continue;
-    if (ch === '{') depth++;
-    if (ch === '}') { depth--; lastCompleteObj = i; }
+    if (ch === '}') { lastCompleteObj = i; }
   }
 
   if (lastCompleteObj > 0) {

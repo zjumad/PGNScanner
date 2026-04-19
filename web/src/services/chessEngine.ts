@@ -256,7 +256,7 @@ export function matchMoveToLegal(
  * to legal moves at each position.
  */
 export function validateMoveSequence(
-  moves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[]
+  moves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox }[]
 ): import('../types').ValidatedMove[] {
   const chess = new Chess();
   const validated: import('../types').ValidatedMove[] = [];
@@ -289,7 +289,6 @@ export function validateMoveSequence(
             fenAfter: chess.fen(),
             fenBefore,
             bbox: move.rowBBox,
-            rotation: move.rotation,
           });
         } catch {
           // Shouldn't happen since we matched against legal moves, but be defensive
@@ -305,7 +304,6 @@ export function validateMoveSequence(
             fenAfter: fenBefore,
             fenBefore,
             bbox: move.rowBBox,
-            rotation: move.rotation,
           });
           break;
         }
@@ -323,7 +321,6 @@ export function validateMoveSequence(
           fenAfter: fenBefore,
           fenBefore,
           bbox: move.rowBBox,
-          rotation: move.rotation,
         });
         break;
       }
@@ -356,7 +353,6 @@ export function validateMoveSequence(
             fenAfter: chess.fen(),
             fenBefore,
             bbox: move.rowBBox,
-            rotation: move.rotation,
           });
         } catch {
           validated.push({
@@ -371,7 +367,6 @@ export function validateMoveSequence(
             fenAfter: fenBefore,
             fenBefore,
             bbox: move.rowBBox,
-            rotation: move.rotation,
           });
           break;
         }
@@ -388,7 +383,6 @@ export function validateMoveSequence(
           fenAfter: fenBefore,
           fenBefore,
           bbox: move.rowBBox,
-          rotation: move.rotation,
         });
         break;
       }
@@ -408,8 +402,8 @@ export function revalidateFromIndex(
   newSan: string
 ): import('../types').ValidatedMove[] {
   // Rebuild move list as raw pairs, using rawOcr to preserve original text
-  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
-  let currentPair: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 } | null = null;
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; }[] = [];
+  let currentPair: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; } | null = null;
 
   for (let i = 0; i < currentMoves.length; i++) {
     const m = currentMoves[i];
@@ -418,14 +412,13 @@ export function revalidateFromIndex(
 
     if (m.color === 'w') {
       if (currentPair) rawMoves.push(currentPair);
-      currentPair = { moveNumber: m.moveNumber, white: text, black: '', rowBBox: m.bbox, rotation: m.rotation };
+      currentPair = { moveNumber: m.moveNumber, white: text, black: '', rowBBox: m.bbox };
     } else {
       if (!currentPair) {
-        currentPair = { moveNumber: m.moveNumber, white: '', black: text, rowBBox: m.bbox, rotation: m.rotation };
+        currentPair = { moveNumber: m.moveNumber, white: '', black: text, rowBBox: m.bbox };
       } else {
         currentPair.black = text;
         if (!currentPair.rowBBox) currentPair.rowBBox = m.bbox;
-        if (m.rotation != null) currentPair.rotation = m.rotation;
       }
     }
   }
@@ -452,7 +445,7 @@ export function insertMoveAtIndex(
   newSan: string
 ): import('../types').ValidatedMove[] {
   // Build raw pairs from current moves, inserting the new move
-  const flatMoves: { san: string; color: 'w' | 'b'; moveNumber: number; rawOcr?: string; bbox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270; isInserted?: boolean }[] = [];
+  const flatMoves: { san: string; color: 'w' | 'b'; moveNumber: number; rawOcr?: string; bbox?: import('../types').CellBoundingBox; isInserted?: boolean }[] = [];
 
   for (let i = 0; i < currentMoves.length; i++) {
     flatMoves.push({
@@ -461,7 +454,6 @@ export function insertMoveAtIndex(
       moveNumber: currentMoves[i].moveNumber,
       rawOcr: currentMoves[i].rawOcr,
       bbox: currentMoves[i].bbox,
-      rotation: currentMoves[i].rotation,
     });
   }
 
@@ -494,19 +486,18 @@ export function insertMoveAtIndex(
   }
 
   // Convert back to raw pairs
-  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; }[] = [];
   for (let i = 0; i < flatMoves.length; i++) {
     const fm = flatMoves[i];
     if (fm.color === 'w') {
-      rawMoves.push({ moveNumber: fm.moveNumber, white: fm.san, black: '', rowBBox: fm.bbox, rotation: fm.rotation });
+      rawMoves.push({ moveNumber: fm.moveNumber, white: fm.san, black: '', rowBBox: fm.bbox });
     } else {
       const last = rawMoves[rawMoves.length - 1];
       if (last && last.moveNumber === fm.moveNumber) {
         last.black = fm.san;
         if (!last.rowBBox) last.rowBBox = fm.bbox;
-        if (fm.rotation != null) last.rotation = fm.rotation;
       } else {
-        rawMoves.push({ moveNumber: fm.moveNumber, white: '', black: fm.san, rowBBox: fm.bbox, rotation: fm.rotation });
+        rawMoves.push({ moveNumber: fm.moveNumber, white: '', black: fm.san, rowBBox: fm.bbox });
       }
     }
   }
@@ -528,7 +519,7 @@ export function deleteMoveAtIndex(
   currentMoves: import('../types').ValidatedMove[],
   deleteIndex: number,
 ): import('../types').ValidatedMove[] {
-  const flatMoves: { san: string; rawOcr?: string; bbox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
+  const flatMoves: { san: string; rawOcr?: string; bbox?: import('../types').CellBoundingBox; }[] = [];
 
   for (let i = 0; i < currentMoves.length; i++) {
     if (i === deleteIndex) continue;
@@ -536,25 +527,23 @@ export function deleteMoveAtIndex(
       san: currentMoves[i].rawOcr || currentMoves[i].san,
       rawOcr: currentMoves[i].rawOcr,
       bbox: currentMoves[i].bbox,
-      rotation: currentMoves[i].rotation,
     });
   }
 
   // Rebuild raw pairs
-  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; }[] = [];
   for (let i = 0; i < flatMoves.length; i++) {
     const color = i % 2 === 0 ? 'w' : 'b';
     const moveNum = Math.floor(i / 2) + 1;
     if (color === 'w') {
-      rawMoves.push({ moveNumber: moveNum, white: flatMoves[i].san, black: '', rowBBox: flatMoves[i].bbox, rotation: flatMoves[i].rotation });
+      rawMoves.push({ moveNumber: moveNum, white: flatMoves[i].san, black: '', rowBBox: flatMoves[i].bbox });
     } else {
       const last = rawMoves[rawMoves.length - 1];
       if (last && last.moveNumber === moveNum) {
         last.black = flatMoves[i].san;
         if (!last.rowBBox) last.rowBBox = flatMoves[i].bbox;
-        if (flatMoves[i].rotation != null) last.rotation = flatMoves[i].rotation;
       } else {
-        rawMoves.push({ moveNumber: moveNum, white: '', black: flatMoves[i].san, rowBBox: flatMoves[i].bbox, rotation: flatMoves[i].rotation });
+        rawMoves.push({ moveNumber: moveNum, white: '', black: flatMoves[i].san, rowBBox: flatMoves[i].bbox });
       }
     }
   }

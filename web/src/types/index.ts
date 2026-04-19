@@ -32,8 +32,6 @@ export interface RecognizedMove {
   blackRawOcr?: string;
   /** Bounding box covering both white and black cells for this move row (normalized 0-1) */
   rowBBox?: CellBoundingBox;
-  /** Clockwise rotation needed to orient this portion upright (0, 90, 180, 270) */
-  rotation?: 0 | 90 | 180 | 270;
 }
 
 export type MatchType = 'exact' | 'fuzzy' | 'forced' | 'corrected' | 'speculative';
@@ -51,8 +49,6 @@ export interface ValidatedMove {
   fenBefore: string;
   /** Bounding box of this move's cell in the source image (normalized 0-1) */
   bbox?: CellBoundingBox;
-  /** Clockwise rotation needed to orient the cell's image portion upright */
-  rotation?: 0 | 90 | 180 | 270;
 }
 
 /** Immutable OCR pairs from the vision API */
