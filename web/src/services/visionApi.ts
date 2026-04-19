@@ -58,29 +58,89 @@ function parseOcrResponse(content: string): OcrResult {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
   }
 
-  const parsed = JSON.parse(jsonStr);
+  // Attempt repair if JSON is truncated (common when output hits token limit)
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return normalizeOcrResult(parsed);
+  } catch {
+    // Try to salvage truncated JSON by closing open structures
+    const repaired = repairTruncatedJson(jsonStr);
+    const parsed = JSON.parse(repaired);
+    return normalizeOcrResult(parsed);
+  }
+}
 
+function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
+  const header = parsed.header as Record<string, unknown> | undefined;
+  const moves = parsed.moves as Record<string, unknown>[] | undefined;
   return {
     header: {
-      event: parsed.header?.event || '',
-      date: parsed.header?.date || '',
-      round: parsed.header?.round || '',
-      white: parsed.header?.white || '',
-      black: parsed.header?.black || '',
-      whiteElo: parsed.header?.whiteElo || '',
-      blackElo: parsed.header?.blackElo || '',
-      opening: parsed.header?.opening || '',
-      eco: parsed.header?.eco || '',
-      result: parsed.header?.result || '*',
+      event: (header?.event as string) || '',
+      date: (header?.date as string) || '',
+      round: (header?.round as string) || '',
+      white: (header?.white as string) || '',
+      black: (header?.black as string) || '',
+      whiteElo: (header?.whiteElo as string) || '',
+      blackElo: (header?.blackElo as string) || '',
+      opening: (header?.opening as string) || '',
+      eco: (header?.eco as string) || '',
+      result: (header?.result as string) || '*',
     },
-    moves: (parsed.moves || []).map((m: Record<string, unknown>) => ({
+    moves: (moves || []).map((m) => ({
       moveNumber: m.moveNumber as number,
       whiteMove: (m.whiteMove as string) || '',
       blackMove: (m.blackMove as string) || '',
-      whiteConfidence: (m.whiteConfidence as string) || 'medium',
-      blackConfidence: (m.blackConfidence as string) || 'medium',
+      whiteConfidence: (m.whiteConfidence as 'high' | 'medium' | 'low') || 'medium',
+      blackConfidence: (m.blackConfidence as 'high' | 'medium' | 'low') || 'medium',
     })),
   };
+}
+
+/**
+ * Attempt to repair truncated JSON by closing open strings, arrays, and objects.
+ */
+function repairTruncatedJson(json: string): string {
+  let s = json.trimEnd();
+
+  // Remove trailing comma
+  s = s.replace(/,\s*$/, '');
+
+  // Close any unterminated string
+  let inString = false;
+  let escaped = false;
+  for (const ch of s) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') inString = !inString;
+  }
+  if (inString) s += '"';
+
+  // Remove any trailing incomplete key-value (e.g., `"key": ` with no value)
+  s = s.replace(/,?\s*"[^"]*"\s*:\s*$/, '');
+
+  // Remove trailing incomplete object/array entry
+  s = s.replace(/,\s*$/, '');
+
+  // Count unmatched brackets and close them
+  let braces = 0;
+  let brackets = 0;
+  inString = false;
+  escaped = false;
+  for (const ch of s) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') braces++;
+    if (ch === '}') braces--;
+    if (ch === '[') brackets++;
+    if (ch === ']') brackets--;
+  }
+
+  for (let i = 0; i < brackets; i++) s += ']';
+  for (let i = 0; i < braces; i++) s += '}';
+
+  return s;
 }
 
 async function recognizeWithGemini(
@@ -109,7 +169,7 @@ async function recognizeWithGemini(
         ],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
         },
       }),
     }
@@ -163,7 +223,7 @@ async function recognizeWithOpenAI(
           ],
         },
       ],
-      max_tokens: 4096,
+      max_tokens: 8192,
       temperature: 0,
     }),
   });
