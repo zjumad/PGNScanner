@@ -1,8 +1,8 @@
 import type { GameHeader, RecognizedMove } from '../types';
 
-export type ApiProvider = 'gemini' | 'openai';
+export type ApiProvider = 'github';
 
-const BUILTIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string || '';
+const BUILTIN_GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN as string || '';
 
 export interface OcrResult {
   header: GameHeader;
@@ -270,64 +270,16 @@ function stripToLastCompleteElement(s: string): string {
   return s;
 }
 
-async function recognizeWithGemini(
+async function recognizeWithGitHub(
   imageBase64: string,
-  apiKey: string,
+  token: string,
   imageType: string
 ): Promise<OcrResult> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: SYSTEM_PROMPT + '\n\nPlease read this chess score sheet and return the moves as JSON.' },
-              {
-                inline_data: {
-                  mime_type: imageType,
-                  data: imageBase64,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 16384,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    const msg = (error as { error?: { message?: string } }).error?.message || response.statusText;
-    throw new Error(`Gemini API error: ${response.status} - ${msg}`);
-  }
-
-  const data = await response.json();
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!content) {
-    throw new Error('No response content from Gemini API');
-  }
-
-  return parseOcrResponse(content);
-}
-
-async function recognizeWithOpenAI(
-  imageBase64: string,
-  apiKey: string,
-  imageType: string
-): Promise<OcrResult> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       model: 'gpt-4o',
@@ -358,7 +310,7 @@ async function recognizeWithOpenAI(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      `OpenAI API error: ${response.status} - ${(error as { error?: { message?: string } }).error?.message || response.statusText}`
+      `GitHub Models API error: ${response.status} - ${(error as { error?: { message?: string } }).error?.message || response.statusText}`
     );
   }
 
@@ -366,7 +318,7 @@ async function recognizeWithOpenAI(
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new Error('No response content from OpenAI API');
+    throw new Error('No response content from GitHub Models API');
   }
 
   return parseOcrResponse(content);
@@ -375,20 +327,13 @@ async function recognizeWithOpenAI(
 export async function recognizeScoreSheet(
   imageBase64: string,
   imageType: string = 'image/jpeg',
-  provider: ApiProvider = 'gemini'
+  _provider: ApiProvider = 'github'
 ): Promise<OcrResult> {
-  const apiKey = BUILTIN_GEMINI_KEY;
-  if (!apiKey) {
-    throw new Error('Gemini API key is not configured. Set VITE_GEMINI_API_KEY in web/.env');
+  const token = BUILTIN_GITHUB_TOKEN;
+  if (!token) {
+    throw new Error('GitHub token is not configured. Set VITE_GITHUB_TOKEN in web/.env');
   }
-  switch (provider) {
-    case 'gemini':
-      return recognizeWithGemini(imageBase64, apiKey, imageType);
-    case 'openai':
-      return recognizeWithOpenAI(imageBase64, apiKey, imageType);
-    default:
-      throw new Error(`Unknown API provider: ${provider}`);
-  }
+  return recognizeWithGitHub(imageBase64, token, imageType);
 }
 
 /**

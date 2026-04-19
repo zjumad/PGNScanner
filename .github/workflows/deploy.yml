@@ -37,7 +37,7 @@ jobs:
         run: npm run build
         working-directory: web
         env:
-          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+          VITE_GITHUB_TOKEN: ${{ secrets.VITE_GITHUB_TOKEN }}
 
       - uses: actions/configure-pages@v5
 
