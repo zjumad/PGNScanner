@@ -20,8 +20,8 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiModelId: 'gemini-2.5-flash' },
-  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', apiModelId: 'gemini-3-flash' },
-  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', provider: 'gemini', apiModelId: 'gemini-3.1-flash-lite' },
+  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', apiModelId: 'gemini-3-flash-preview' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', provider: 'gemini', apiModelId: 'gemini-3.1-flash-lite-preview' },
   { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', provider: 'gemini', apiModelId: 'gemini-2.5-flash-lite' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini (GitHub)', provider: 'github', apiModelId: 'gpt-4o-mini' },
   { id: 'gpt-4o', label: 'GPT-4o (GitHub)', provider: 'github', apiModelId: 'gpt-4o' },
