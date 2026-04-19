@@ -239,6 +239,7 @@ export default function MoveList({
         <div className="flex items-center justify-between">
           <span className="text-sm">Moves</span>
           <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400">Jump to issue</span>
             <button onClick={() => onNavigateToError('prev')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Previous issue">▲</button>
             <button onClick={() => onNavigateToError('next')} className="px-1.5 py-0.5 text-xs rounded hover:bg-gray-100 text-gray-500" title="Next issue">▼</button>
           </div>
