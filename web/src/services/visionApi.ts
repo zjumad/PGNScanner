@@ -58,16 +58,23 @@ function parseOcrResponse(content: string): OcrResult {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
   }
 
-  // Attempt repair if JSON is truncated (common when output hits token limit)
+  // Try parsing as-is first
   try {
-    const parsed = JSON.parse(jsonStr);
-    return normalizeOcrResult(parsed);
+    return normalizeOcrResult(JSON.parse(jsonStr));
   } catch {
-    // Try to salvage truncated JSON by closing open structures
-    const repaired = repairTruncatedJson(jsonStr);
-    const parsed = JSON.parse(repaired);
-    return normalizeOcrResult(parsed);
+    // Attempt to salvage truncated JSON
   }
+
+  // Try increasingly aggressive repairs
+  for (const repaired of repairAttempts(jsonStr)) {
+    try {
+      return normalizeOcrResult(JSON.parse(repaired));
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error('Failed to parse OCR response. The API response may be too long or malformed.');
 }
 
 function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
@@ -97,15 +104,33 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
 }
 
 /**
- * Attempt to repair truncated JSON by closing open strings, arrays, and objects.
+ * Generate multiple repair attempts for truncated JSON, from least to most aggressive.
  */
-function repairTruncatedJson(json: string): string {
+function* repairAttempts(json: string): Generator<string> {
   let s = json.trimEnd();
 
+  // Attempt 1: just close open structures
+  yield closeJson(s);
+
+  // Attempt 2: remove last incomplete value, then close
+  // Truncation often cuts mid-value, e.g.: ..."whiteMove": "Nf
+  // Strip back to last complete key-value pair
+  s = stripToLastCompleteValue(s);
+  yield closeJson(s);
+
+  // Attempt 3: strip back to last complete array element (move object)
+  s = stripToLastCompleteElement(json.trimEnd());
+  yield closeJson(s);
+}
+
+/**
+ * Close all open strings, arrays, and objects in a JSON fragment.
+ */
+function closeJson(s: string): string {
   // Remove trailing comma
   s = s.replace(/,\s*$/, '');
 
-  // Close any unterminated string
+  // Check if we're inside an unterminated string
   let inString = false;
   let escaped = false;
   for (const ch of s) {
@@ -115,31 +140,74 @@ function repairTruncatedJson(json: string): string {
   }
   if (inString) s += '"';
 
-  // Remove any trailing incomplete key-value (e.g., `"key": ` with no value)
+  // Remove trailing incomplete key-value (e.g., `"key":` or `"key": `)
+  s = s.replace(/,?\s*"[^"]*"\s*:\s*"[^"]*"?\s*$/, '');
   s = s.replace(/,?\s*"[^"]*"\s*:\s*$/, '');
-
-  // Remove trailing incomplete object/array entry
   s = s.replace(/,\s*$/, '');
 
   // Count unmatched brackets and close them
-  let braces = 0;
-  let brackets = 0;
-  inString = false;
-  escaped = false;
+  const closers = computeClosers(s);
+  return s + closers;
+}
+
+function computeClosers(s: string): string {
+  const stack: string[] = [];
+  let inStr = false;
+  let esc = false;
   for (const ch of s) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === '\\') { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') braces++;
-    if (ch === '}') braces--;
-    if (ch === '[') brackets++;
-    if (ch === ']') brackets--;
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  return stack.reverse().join('');
+}
+
+/**
+ * Strip back to the last character that ends a complete JSON value.
+ */
+function stripToLastCompleteValue(s: string): string {
+  // Find the last position that ends a complete value: ", }, ], digit, true/false/null
+  for (let i = s.length - 1; i >= 0; i--) {
+    const ch = s[i];
+    if (ch === '"' || ch === '}' || ch === ']') {
+      // Make sure this quote isn't escaped
+      if (ch === '"' && i > 0 && s[i - 1] === '\\') continue;
+      return s.slice(0, i + 1);
+    }
+    if (/[0-9]/.test(ch)) return s.slice(0, i + 1);
+    if (s.slice(Math.max(0, i - 3), i + 1).match(/(true|null)$/)) return s.slice(0, i + 1);
+    if (s.slice(Math.max(0, i - 4), i + 1).match(/false$/)) return s.slice(0, i + 1);
+  }
+  return s;
+}
+
+/**
+ * Strip back to the last complete object in an array (last `}`).
+ */
+function stripToLastCompleteElement(s: string): string {
+  // Find the last `}` that closes a complete move object
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let lastCompleteObj = -1;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') { depth--; lastCompleteObj = i; }
   }
 
-  for (let i = 0; i < brackets; i++) s += ']';
-  for (let i = 0; i < braces; i++) s += '}';
-
+  if (lastCompleteObj > 0) {
+    return s.slice(0, lastCompleteObj + 1);
+  }
   return s;
 }
 
