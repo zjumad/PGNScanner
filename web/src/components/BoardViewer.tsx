@@ -18,6 +18,7 @@ export default function BoardViewer({
   onMoveMade,
 }: BoardViewerProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
 
   // Build a map: fromSquare → [{toSquare, san, promotion?}]
   const moveMap = useMemo(() => {
@@ -39,22 +40,25 @@ export default function BoardViewer({
     return map;
   }, [fen, legalMoves, interactive]);
 
-  // Highlight squares for selected piece's legal destinations
+  // Highlight squares for selected or dragging piece's legal destinations
+  const activeSquare = draggingFrom || selectedSquare;
   const squareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {};
-    if (selectedSquare && moveMap.has(selectedSquare)) {
-      styles[selectedSquare] = { backgroundColor: 'rgba(255, 255, 0, 0.4)' };
-      for (const m of moveMap.get(selectedSquare)!) {
-        styles[m.to] = { backgroundColor: 'rgba(0, 180, 0, 0.3)', borderRadius: '50%' };
+    if (activeSquare && moveMap.has(activeSquare)) {
+      styles[activeSquare] = { backgroundColor: 'rgba(255, 255, 0, 0.4)' };
+      for (const m of moveMap.get(activeSquare)!) {
+        styles[m.to] = {
+          background: 'radial-gradient(circle, rgba(0, 180, 0, 0.4) 25%, transparent 25%)',
+          borderRadius: '0',
+        };
       }
     }
     return styles;
-  }, [selectedSquare, moveMap]);
+  }, [activeSquare, moveMap]);
 
   const handleSquareClick = useCallback(({ square }: { piece: unknown; square: string }) => {
     if (!interactive || !onMoveMade) return;
 
-    // If clicking a destination square of the selected piece, make the move
     if (selectedSquare && moveMap.has(selectedSquare)) {
       const targets = moveMap.get(selectedSquare)!;
       const match = targets.find(m => m.to === square);
@@ -65,7 +69,6 @@ export default function BoardViewer({
       }
     }
 
-    // Select this square if it has moves
     if (moveMap.has(square)) {
       setSelectedSquare(prev => prev === square ? null : square);
     } else {
@@ -73,9 +76,16 @@ export default function BoardViewer({
     }
   }, [interactive, onMoveMade, selectedSquare, moveMap]);
 
+  const handlePieceDrag = useCallback(({ square }: { isSparePiece: boolean; piece: unknown; square: string | null }) => {
+    if (square && moveMap.has(square)) {
+      setDraggingFrom(square);
+    }
+  }, [moveMap]);
+
   const handlePieceDrop = useCallback(({ sourceSquare, targetSquare }: {
     piece: unknown; sourceSquare: string; targetSquare: string | null;
   }): boolean => {
+    setDraggingFrom(null);
     if (!interactive || !onMoveMade || !targetSquare) return false;
 
     const targets = moveMap.get(sourceSquare);
@@ -99,6 +109,7 @@ export default function BoardViewer({
           allowDragging: interactive,
           squareStyles,
           onSquareClick: interactive ? handleSquareClick : undefined,
+          onPieceDrag: interactive ? handlePieceDrag : undefined,
           onPieceDrop: interactive ? handlePieceDrop : undefined,
           boardStyle: {
             borderRadius: '4px',
