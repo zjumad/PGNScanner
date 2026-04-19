@@ -59,7 +59,7 @@ The app follows this workflow:
   - **Gemini 3 Flash** — Google's Gemini API
   - **Gemini 3.1 Flash Lite** — Google's Gemini API
   - **Gemini 2.5 Flash Lite** — Google's Gemini API (fastest, cost-efficient)
-  - **Claude Sonnet 4.6 (GitHub Models)** — Anthropic Claude via GitHub Models inference API
+  - **GPT-4o Mini (GitHub Models)** — OpenAI GPT-4o Mini via GitHub Models inference API
   - **GPT-4o (GitHub Models)** — OpenAI GPT-4o via GitHub Models inference API
 - The selected model is persisted in localStorage across sessions.
   
@@ -71,6 +71,29 @@ The app follows this workflow:
 - Supported image formats: JPG, PNG, WEBP (any `image/*` type).
 - A preview of the selected image(s) is shown before processing begins. Users click "Scan" to start processing.
 
+#### Image Preprocessing (automatic)
+
+After the user selects images and before OCR processing begins, the app automatically preprocesses each image:
+
+1. **EXIF orientation correction**: Phone photos are often stored sideways with an EXIF orientation tag. The app reads the EXIF metadata and rotates/flips the image to its correct upright orientation using `createImageBitmap` with `imageOrientation: 'from-image'`.
+2. **Format normalization**: All images are re-encoded as JPEG (quality 0.92) for consistent format and smaller payload size.
+3. The corrected image replaces the original for both:
+   - The OCR API call (so the model receives an upright image and doesn't need to detect rotation)
+   - The UI display (so the user sees the image in correct orientation)
+
+This means the OCR model no longer needs to detect or report rotation — all grid coordinates are relative to the upright, corrected image.
+
+#### Manual Rotate & Crop (planned)
+
+After uploading and before scanning, the user should be able to manually adjust images:
+
+- **Rotate**: Buttons to rotate the image 90° clockwise or counter-clockwise. This applies a real rotation to the image data (not just CSS), so the OCR model and UI both see the rotated version.
+- **Crop**: The user can drag to select a rectangular region of the image to crop to. This is useful when:
+  - The photo includes extra background beyond the score sheet
+  - Only one side of a 2-sided sheet is visible and needs trimming
+- After rotating or cropping, the preview updates immediately. The user can undo these adjustments before scanning.
+- These adjustments are applied to the preprocessed (EXIF-corrected) image, so they compose correctly.
+
 ### Step 2: Processing
 
 - Each image is sent as base64 to the selected Vision API with a detailed system prompt describing the score sheet layout and chess notation rules.
@@ -79,9 +102,9 @@ The app follows this workflow:
   - **Header fields**: Event, Date, Round, White, Black, White Elo, Black Elo, Opening, ECO, Result.
   - **Move list**: Each move includes
     - a move number
-    - White's move or Black's move
+    - White's move and/or Black's move
     - per-move confidence levels (high / medium / low)
-    - bound box of the cell on the picture, rotation angle if any needed of portion on the picture for this move
+  - **Grid descriptor**: A bounding box for each grid section (left, right, and optionally third) in normalized coordinates (0–1) relative to the preprocessed upright image. The app uses the grid descriptor to compute per-row image crops — the OCR model does not need to return per-move bounding boxes or rotation.
 - A spinner with "Recognizing moves…" text is displayed during processing.
 - If the API response is truncated JSON, the app attempts automatic repair (closing brackets, stripping incomplete values) before failing.
 
@@ -192,7 +215,7 @@ In the review screen, the following keyboard shortcuts are available (when the a
      - `gemini-3.1-flash-lite`
      - `gemini-2.5-flash-lite` (fastest/cheapest)
   -  The API key is stored in the `VITE_GEMINI_API_KEY` environment variable (in `web/.env`, gitignored).
-- **GitHub Models** (`claude-sonnet-4-6`, `gpt-4o`): OpenAI GPT-4o and Anthropic Claude Sonnet 4.6 via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
+- **GitHub Models** (`gpt-4o-mini`, `gpt-4o`): OpenAI GPT-4o Mini and GPT-4o via GitHub Models inference API at `models.github.ai`. Authenticated with a GitHub Personal Access Token (PAT) with "Models" read permission, stored in the `VITE_GITHUB_TOKEN` environment variable (in `web/.env`, gitignored).
 - Both providers use raw `fetch` calls (no SDK).
 - Temperature is set to 0 for deterministic output. Max output tokens: 16384.
 - No user-facing API key configuration — keys are embedded at build time.
@@ -200,8 +223,8 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - If the selected model is not working due to rate limit, automatically try with the next model available on the list
 - The model list is ordered as the order they are mentioned in this file.
 - **Per-model prompt optimization**: The system prompt is split into a shared base (chess notation rules, sheet layout, response format) and model-specific grid descriptor instructions:
-  - **Gemini / Claude**: Standard grid instructions; these models handle spatial localization well.
-  - **GPT-4o**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common GPT-4o failure of including the header/event info in the grid bounding box.
+  - **Gemini**: Standard grid instructions; these models handle spatial localization well.
+  - **GPT-4o / GPT-4o Mini**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common GPT-4o failure of including the header/event info in the grid bounding box.
 - **Grid validation**: The app validates returned grid descriptors before using them (coordinates in [0,1], nonzero dimensions, reasonable row heights, grid starts below header area). Invalid grids are rejected and fall back to per-move bounding boxes.
 - **Grid calibration**: Users can manually recalibrate the grid in the Debug tab by clicking two points (top-left of row 1, bottom-right of last row) on the uploaded image. This overrides the model's grid and recomputes all move bounding boxes.
 
@@ -217,11 +240,6 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - A **summary bar** at the top of the Moves tab shows legends and counts by category: exact, fuzzy, forced/guess, corrected, invalid, and speculative.
 - **Next/Previous error** buttons (▼▲) jump directly to the next move that needs attention. Put a text on the left these button to explain what they do.
 - "Needs attention" is defined as: invalid, forced (uncertain guess), fuzzy, or speculative — but NOT moves already manually corrected.
-
-### Image Rotation Controls
-- The Image tab includes **rotate CW/CCW** buttons (90° increments), per-page when multiple images are uploaded.
-- Rotation is CSS-only (does not affect the image sent to OCR).
-- All sample score sheet photos are taken sideways — this lets users orient the image for easier reference during correction.
 
 ### Undo/Redo for Corrections
 - Every correction, insertion, or deletion pushes the previous game state onto an **undo stack**.
