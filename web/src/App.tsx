@@ -258,13 +258,13 @@ export default function App() {
     ? gameState.moves[insertingAfterIndex]
     : null;
 
-  const currentFen = isInserting
+  // For the interactive board, show the position BEFORE the current move
+  // so the user can drag pieces to make/correct the move
+  const boardFen = isInserting
     ? (insertPointMove?.isValid ? insertPointMove.fenAfter : insertPointMove?.fenBefore ?? STARTING_FEN)
-    : selectedMove?.isValid
-      ? selectedMove.fenAfter
-      : selectedMove
-        ? selectedMove.fenBefore
-        : STARTING_FEN;
+    : selectedMove
+      ? selectedMove.fenBefore
+      : STARTING_FEN;
 
   // Legal moves: during insert, use the insert legal moves; otherwise from selected move
   const legalMovesAtSelected = isInserting
@@ -282,6 +282,14 @@ export default function App() {
   const legalMovesSide: 'w' | 'b' = isInserting
     ? (insertingAfterIndex < 0 ? 'w' : (insertPointMove?.color === 'w' ? 'b' : 'w'))
     : selectedMove?.color ?? 'w';
+
+  const handleBoardMove = useCallback((san: string) => {
+    if (isInserting && insertingAfterIndex !== null) {
+      handleInsertMove(insertingAfterIndex, san);
+    } else if (gameState.selectedMoveIndex >= 0) {
+      handleCorrectMove(gameState.selectedMoveIndex, san);
+    }
+  }, [isInserting, insertingAfterIndex, gameState.selectedMoveIndex, handleInsertMove, handleCorrectMove]);
 
   return (
     <div
@@ -364,7 +372,12 @@ export default function App() {
 
             {/* Right: Board + Legal moves + Controls */}
             <div className="flex flex-col items-center gap-4">
-              <BoardViewer fen={currentFen} />
+              <BoardViewer
+                fen={boardFen}
+                interactive={selectedMove !== null || isInserting}
+                legalMoves={legalMovesAtSelected}
+                onMoveMade={handleBoardMove}
+              />
 
               <div className="flex items-center gap-2">
                 <button onClick={() => handleNavigate('start')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to start">{'\u23EE'}</button>
