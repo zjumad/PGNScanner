@@ -118,11 +118,13 @@ export default function App() {
     setGameState((prev) => {
       const newMoves = revalidateFromIndex(prev.moves, index, newSan);
       const newCorrections = { ...prev.corrections, [index]: newSan };
+      // Advance to next move so the board shows the result of the correction
+      const nextIndex = Math.min(index + 1, newMoves.length - 1);
       return {
         ...prev,
         moves: newMoves,
         corrections: newCorrections,
-        selectedMoveIndex: Math.min(index, newMoves.length - 1),
+        selectedMoveIndex: nextIndex,
       };
     });
   }, []);
@@ -146,10 +148,13 @@ export default function App() {
   const handleInsertMove = useCallback((afterIndex: number, san: string) => {
     setGameState((prev) => {
       const newMoves = insertMoveAtIndex(prev.moves, afterIndex, san);
+      // Advance past the inserted move to show its result
+      const insertedAt = afterIndex + 1;
+      const nextIndex = Math.min(insertedAt + 1, newMoves.length - 1);
       return {
         ...prev,
         moves: newMoves,
-        selectedMoveIndex: Math.min(afterIndex + 1, newMoves.length - 1),
+        selectedMoveIndex: nextIndex,
       };
     });
     setInsertingAfterIndex(null);
