@@ -109,7 +109,8 @@ Confidence levels:
 
 Do NOT include rowBBox in individual moves — the grid descriptor is used to compute row positions.
 
-Return ONLY valid JSON, no markdown code blocks or other text.`;
+Return ONLY valid JSON, no markdown code blocks or other text.
+IMPORTANT: Keep the JSON compact — no extra whitespace or formatting. This ensures all moves fit within token limits.`;
 
 // Gemini-specific grid instructions — Gemini handles spatial tasks well
 const GEMINI_GRID_INSTRUCTIONS = `
@@ -548,9 +549,14 @@ async function recognizeWithGemini(
 
   const data = await response.json();
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const finishReason = data.candidates?.[0]?.finishReason;
 
   if (!content) {
     throw new Error('No response content from Gemini API');
+  }
+
+  if (finishReason === 'MAX_TOKENS') {
+    console.warn('Gemini response was truncated due to max token limit — some moves may be missing');
   }
 
   return parseOcrResponse(content);
@@ -605,9 +611,14 @@ async function recognizeWithGitHub(
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
+  const finishReason = data.choices?.[0]?.finish_reason;
 
   if (!content) {
     throw new Error('No response content from GitHub Models API');
+  }
+
+  if (finishReason === 'length') {
+    console.warn('GitHub Models response was truncated due to max token limit — some moves may be missing');
   }
 
   return parseOcrResponse(content);
