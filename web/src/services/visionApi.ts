@@ -96,6 +96,7 @@ COMMON HANDWRITING CONFUSIONS TO WATCH FOR:
 
 IMPORTANT:
 - Read EVERY move that is actually written. Do not skip or invent moves.
+- READ BOTH GRID HALVES: After reading all moves from the LEFT grid, CONTINUE reading moves from the RIGHT grid. The right grid contains the continuation of the game (e.g., moves 26-50 or 31-60). Do NOT stop after the left grid.
 - If a move is crossed out or truly illegible, put "?" as the move.
 - Pay careful attention to similar-looking letters. When in doubt, consider which reading produces a valid chess move.
 - The result should be "1-0" for White Won, "0-1" for Black Won, "1/2-1/2" for Draw, or "*" if unclear.
@@ -136,7 +137,9 @@ Return your response as a JSON object with this exact structure:
       "moveNumber": 1,
       "whiteMove": "e4", "blackMove": "e5",
       "whiteConfidence": "high", "blackConfidence": "high"
-    }
+    },
+    { "moveNumber": 2, "whiteMove": "Nf3", "blackMove": "Nc6", "whiteConfidence": "high", "blackConfidence": "high" },
+    "... (continue through ALL moves in the left grid AND the right grid)"
   ]
 }
 
@@ -181,7 +184,9 @@ Return your response as a JSON object with this exact structure:
       "moveNumber": 1,
       "whiteMove": "e4", "blackMove": "e5",
       "whiteConfidence": "high", "blackConfidence": "high"
-    }
+    },
+    { "moveNumber": 2, "whiteMove": "Nf3", "blackMove": "Nc6", "whiteConfidence": "high", "blackConfidence": "high" },
+    "... (continue through ALL moves in the left grid AND the right grid)"
   ]
 }
 
