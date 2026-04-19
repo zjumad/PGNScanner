@@ -47,9 +47,10 @@ You should use these samples to analyze the difference in the handwritten notati
 
 The app follows this workflow:
 1. Upload
-2. Processing
-3. Review
-4. Export
+2. Perspective Correction (interactive)
+3. Processing
+4. Review
+5. Export
 
 ### Step 1: Upload
 
@@ -83,6 +84,29 @@ After the user selects images and before OCR processing begins, the app automati
 
 This means the OCR model no longer needs to detect or report rotation — all grid coordinates are relative to the upright, corrected image.
 
+#### Perspective Correction (interactive)
+
+After EXIF correction and before OCR, the user is presented with an interactive perspective correction screen:
+
+1. **4-corner editor**: Each uploaded image is shown with four draggable corner handles (TL, TR, BR, BL) initialized at the image edges.
+2. The user drags corners to match the edges of the score sheet, correcting for perspective distortion (e.g., photos taken at an angle).
+3. **Per-page navigation**: For multi-image uploads, the user can navigate between pages to adjust corners for each image independently.
+4. **Validation**: Corners must form a valid convex quadrilateral (non-self-intersecting, minimum area). An error message is shown if the shape is invalid.
+5. **Apply / Skip**: The user clicks "Apply & Scan" to warp images using a homography transform, or "Skip — Scan Without Correction" to proceed with the original images.
+6. The perspective warp uses a pure JavaScript implementation (no OpenCV): an 8×8 homography solver with Gaussian elimination, applied via a mesh-based canvas warp (20×20 grid cells with affine approximation per cell). Output dimensions are capped at 4096px to prevent mobile memory issues.
+
+#### Multi-Image Merge
+
+For **multi-image uploads**, instead of processing each image separately, the app merges all images into a single side-by-side image before OCR:
+
+1. All images are scaled to the same height.
+2. Images are composited horizontally (left to right) into one wide image.
+3. A single OCR call is made on the merged image.
+4. The OCR prompt tells the model to read all grid sections from left to right across the merged image.
+5. Grid coordinates in the response are relative to the merged image, ensuring the Sheet column crops are accurate.
+
+This approach produces better results than separate OCR calls because the model sees the complete game in one view and can resolve ambiguities across pages.
+
 #### Manual Rotate & Crop (planned)
 
 After uploading and before scanning, the user should be able to manually adjust images:
@@ -94,10 +118,14 @@ After uploading and before scanning, the user should be able to manually adjust 
 - After rotating or cropping, the preview updates immediately. The user can undo these adjustments before scanning.
 - These adjustments are applied to the preprocessed (EXIF-corrected) image, so they compose correctly.
 
-### Step 2: Processing
+### Step 2: Perspective Correction
 
-- Each image is sent as base64 to the selected Vision API with a detailed system prompt describing the score sheet layout and chess notation rules.
-- For **multi-image uploads**, each image is processed sequentially with a progress indicator ("Recognizing image 1 of 2..."). Results are merged by move number — overlapping half-moves keep the higher-confidence version.
+See "Perspective Correction (interactive)" above under Image Preprocessing.
+
+### Step 3: Processing
+
+- The (possibly merged) image is sent as base64 to the selected Vision API with a detailed system prompt describing the score sheet layout and chess notation rules.
+- For **multi-image uploads**, all images are merged into one before the OCR call (see Multi-Image Merge above). The progress indicator shows "Merging images..." then "Recognizing moves...".
 - The API returns a JSON response containing:
   - **Header fields**: Event, Date, Round, White, Black, White Elo, Black Elo, Opening, ECO, Result.
   - **Move list**: Each move includes
@@ -108,7 +136,7 @@ After uploading and before scanning, the user should be able to manually adjust 
 - A spinner with "Recognizing moves…" text is displayed during processing.
 - If the API response is truncated JSON, the app attempts automatic repair (closing brackets, stripping incomplete values) before failing.
 
-### Step 3: Review
+### Step 4: Review
 
 The review screen uses a **tabbed single-column layout** with three tabs: **Board**, **Game Info**, **Debug**
 
@@ -173,7 +201,7 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 - **Corrections** trigger full revalidation: when the user corrects a move at index N, the entire game is replayed from move 1 using the original raw OCR text for all moves except the corrected one. This ensures all subsequent moves re-validate against the updated position.
 - **Insert** and **Delete** also trigger full revalidation with recalculated move numbers and colors.
 
-### Step 4: Export
+### Step 5: Export
 Users is able to export the result as PGN files. 
 The file name patttern will be something like the PGN file names under /Samples folder. By "[yyyy]-[MM]-[dd] - [round] - [White_player] vs [black_player].pgn".
 
@@ -240,9 +268,9 @@ In the review screen, the following keyboard shortcuts are available (when the a
 
 ### Multi-Image Upload
 - Users can upload **multiple images** for 2-sided score sheets (or any multi-page game).
-- Each image is OCR'd separately, then results are merged by move number (overlapping half-moves keep the higher-confidence version).
-- The Image tab shows a **page carousel** with ◀▶ navigation between pages.
-- Processing shows progress per image ("Recognizing image 1 of 2...").
+- All images are merged into a single side-by-side image before OCR (see Multi-Image Merge under Upload step).
+- The Debug tab shows the merged OCR image and, for multi-image uploads, per-page images with ◀▶ navigation.
+- Grid coordinates and Sheet column crops are always relative to the merged OCR image for consistency.
 
 ### Image Region Highlighting
 - The Image tab shows a **move position indicator** displaying the currently selected move's number, color, and approximate grid location (e.g., left column rows 1–25, right column rows 26–50 for a 25-row sheet).
