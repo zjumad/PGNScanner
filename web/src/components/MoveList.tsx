@@ -6,6 +6,12 @@ interface MoveListProps {
   selectedIndex: number;
   onSelectMove: (index: number) => void;
   onCorrectMove: (index: number, newSan: string) => void;
+  onInsertMove: (afterIndex: number, san: string) => void;
+  onDeleteMove: (index: number) => void;
+  insertLegalMoves: string[];
+  onRequestInsert: (afterIndex: number) => void;
+  insertingAfterIndex: number | null;
+  onCancelInsert: () => void;
 }
 
 export default function MoveList({
@@ -13,6 +19,12 @@ export default function MoveList({
   selectedIndex,
   onSelectMove,
   onCorrectMove,
+  onInsertMove,
+  onDeleteMove,
+  insertLegalMoves,
+  onRequestInsert,
+  insertingAfterIndex,
+  onCancelInsert,
 }: MoveListProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -76,6 +88,40 @@ export default function MoveList({
     }
   }
 
+  // Insert row component
+  const InsertButton = ({ afterIndex, label }: { afterIndex: number; label?: string }) => {
+    const isActive = insertingAfterIndex === afterIndex;
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          className={`px-1 py-0 text-xs rounded transition-colors ${
+            isActive
+              ? 'bg-green-100 text-green-700 border border-green-400'
+              : 'text-gray-300 hover:text-green-600 hover:bg-green-50'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isActive) {
+              onCancelInsert();
+            } else {
+              onRequestInsert(afterIndex);
+            }
+          }}
+          title={label || `Insert move here`}
+        >
+          +
+        </button>
+        {isActive && (
+          <InsertDropdown
+            legalMoves={insertLegalMoves}
+            onSelect={(san) => onInsertMove(afterIndex, san)}
+            onCancel={onCancelInsert}
+          />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 font-semibold text-gray-700 flex flex-col gap-1">
@@ -101,76 +147,116 @@ export default function MoveList({
               <th className="px-2 py-1.5 text-left text-xs text-gray-500 w-10">#</th>
               <th className="px-2 py-1.5 text-left text-xs text-gray-500">White</th>
               <th className="px-2 py-1.5 text-left text-xs text-gray-500">Black</th>
+              <th className="px-1 py-1.5 w-8"></th>
             </tr>
           </thead>
           <tbody>
-            {movePairs.map((pair) => (
-              <tr key={pair.moveNumber} className="border-b border-gray-100">
+            {/* Insert before all moves */}
+            {moves.length > 0 && (
+              <tr className="border-b border-gray-50">
+                <td colSpan={4} className="px-2 py-0.5">
+                  <InsertButton afterIndex={-1} label="Insert before first move" />
+                </td>
+              </tr>
+            )}
+            {movePairs.map((pair, pairIdx) => (
+              <tr key={`${pair.moveNumber}-${pairIdx}`} className="border-b border-gray-100 group">
                 <td className="px-2 py-1 text-gray-400 font-mono text-xs">
                   {pair.moveNumber}.
                 </td>
                 <td className="px-1 py-1">
                   {pair.white && (
-                    <MoveCell
-                      move={pair.white.move}
-                      index={pair.white.index}
-                      isSelected={selectedIndex === pair.white.index}
-                      isEditing={editingIndex === pair.white.index}
-                      confidenceColor={confidenceColor(pair.white.move)}
-                      confidenceDot={confidenceDot(pair.white.move)}
-                      searchText={searchText}
-                      filteredAlternatives={filteredAlternatives(pair.white.move)}
-                      onSelect={() => onSelectMove(pair.white!.index)}
-                      onStartEdit={() => {
-                        setEditingIndex(pair.white!.index);
-                        setSearchText('');
-                      }}
-                      onCorrect={(san) => {
-                        onCorrectMove(pair.white!.index, san);
-                        setEditingIndex(null);
-                        setSearchText('');
-                      }}
-                      onCancelEdit={() => {
-                        setEditingIndex(null);
-                        setSearchText('');
-                      }}
-                      onSearchChange={setSearchText}
-                      selectedRef={selectedIndex === pair.white.index ? selectedRef : undefined}
-                    />
+                    <div className="flex items-center gap-0.5">
+                      <div className="flex-1">
+                        <MoveCell
+                          move={pair.white.move}
+                          index={pair.white.index}
+                          isSelected={selectedIndex === pair.white.index}
+                          isEditing={editingIndex === pair.white.index}
+                          confidenceColor={confidenceColor(pair.white.move)}
+                          confidenceDot={confidenceDot(pair.white.move)}
+                          searchText={searchText}
+                          filteredAlternatives={filteredAlternatives(pair.white.move)}
+                          onSelect={() => onSelectMove(pair.white!.index)}
+                          onStartEdit={() => {
+                            setEditingIndex(pair.white!.index);
+                            setSearchText('');
+                          }}
+                          onCorrect={(san) => {
+                            onCorrectMove(pair.white!.index, san);
+                            setEditingIndex(null);
+                            setSearchText('');
+                          }}
+                          onCancelEdit={() => {
+                            setEditingIndex(null);
+                            setSearchText('');
+                          }}
+                          onSearchChange={setSearchText}
+                          selectedRef={selectedIndex === pair.white.index ? selectedRef : undefined}
+                        />
+                      </div>
+                      <InsertButton afterIndex={pair.white.index} />
+                    </div>
                   )}
                 </td>
                 <td className="px-1 py-1">
                   {pair.black && (
-                    <MoveCell
-                      move={pair.black.move}
-                      index={pair.black.index}
-                      isSelected={selectedIndex === pair.black.index}
-                      isEditing={editingIndex === pair.black.index}
-                      confidenceColor={confidenceColor(pair.black.move)}
-                      confidenceDot={confidenceDot(pair.black.move)}
-                      searchText={searchText}
-                      filteredAlternatives={filteredAlternatives(pair.black.move)}
-                      onSelect={() => onSelectMove(pair.black!.index)}
-                      onStartEdit={() => {
-                        setEditingIndex(pair.black!.index);
-                        setSearchText('');
-                      }}
-                      onCorrect={(san) => {
-                        onCorrectMove(pair.black!.index, san);
-                        setEditingIndex(null);
-                        setSearchText('');
-                      }}
-                      onCancelEdit={() => {
-                        setEditingIndex(null);
-                        setSearchText('');
-                      }}
-                      onSearchChange={setSearchText}
-                      selectedRef={selectedIndex === pair.black.index ? selectedRef : undefined}
-                    />
+                    <div className="flex items-center gap-0.5">
+                      <div className="flex-1">
+                        <MoveCell
+                          move={pair.black.move}
+                          index={pair.black.index}
+                          isSelected={selectedIndex === pair.black.index}
+                          isEditing={editingIndex === pair.black.index}
+                          confidenceColor={confidenceColor(pair.black.move)}
+                          confidenceDot={confidenceDot(pair.black.move)}
+                          searchText={searchText}
+                          filteredAlternatives={filteredAlternatives(pair.black.move)}
+                          onSelect={() => onSelectMove(pair.black!.index)}
+                          onStartEdit={() => {
+                            setEditingIndex(pair.black!.index);
+                            setSearchText('');
+                          }}
+                          onCorrect={(san) => {
+                            onCorrectMove(pair.black!.index, san);
+                            setEditingIndex(null);
+                            setSearchText('');
+                          }}
+                          onCancelEdit={() => {
+                            setEditingIndex(null);
+                            setSearchText('');
+                          }}
+                          onSearchChange={setSearchText}
+                          selectedRef={selectedIndex === pair.black.index ? selectedRef : undefined}
+                        />
+                      </div>
+                      <InsertButton afterIndex={pair.black.index} />
+                    </div>
                   )}
+                </td>
+                <td className="px-1 py-1">
+                  {/* Delete button — visible on hover */}
+                  <button
+                    className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    title="Delete last move in this row"
+                    onClick={() => {
+                      const idx = pair.black?.index ?? pair.white?.index;
+                      if (idx !== undefined) onDeleteMove(idx);
+                    }}
+                  >
+                    ✕
+                  </button>
                 </td>
               </tr>
             ))}
+            {/* Insert at end */}
+            {moves.length > 0 && (
+              <tr>
+                <td colSpan={4} className="px-2 py-1">
+                  <InsertButton afterIndex={moves.length - 1} label="Append move at end" />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -284,6 +370,60 @@ function MoveCell({
           ← {move.rawOcr}
         </span>
       )}
+    </div>
+  );
+}
+
+function InsertDropdown({
+  legalMoves,
+  onSelect,
+  onCancel,
+}: {
+  legalMoves: string[];
+  onSelect: (san: string) => void;
+  onCancel: () => void;
+}) {
+  const [filter, setFilter] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const filtered = filter
+    ? legalMoves.filter((m) => m.toLowerCase().includes(filter.toLowerCase()))
+    : legalMoves;
+
+  return (
+    <div className="absolute z-20 left-0 mt-1 bg-white border border-green-300 rounded-md shadow-lg w-48">
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Filter moves..."
+        className="w-full px-2 py-1 text-xs border-b border-gray-200 focus:outline-none font-mono"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Enter' && filtered.length === 1) {
+            onSelect(filtered[0]);
+          }
+        }}
+      />
+      <div className="max-h-36 overflow-y-auto">
+        {filtered.map((m) => (
+          <button
+            key={m}
+            className="w-full text-left px-2 py-1 text-xs font-mono hover:bg-green-50"
+            onClick={() => onSelect(m)}
+          >
+            {m}
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div className="px-2 py-1 text-xs text-gray-400">No matching moves</div>
+        )}
+      </div>
     </div>
   );
 }

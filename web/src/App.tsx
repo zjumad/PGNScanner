@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AppStep, GameHeader, GameState, RawOcrMovePair } from './types';
-import { validateMoveSequence, revalidateFromIndex, generatePgn } from './services/chessEngine';
+import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition } from './services/chessEngine';
 import { recognizeScoreSheet, fileToBase64 } from './services/visionApi';
 import type { ApiProvider } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
@@ -123,6 +123,45 @@ export default function App() {
         moves: newMoves,
         corrections: newCorrections,
         selectedMoveIndex: Math.min(index, newMoves.length - 1),
+      };
+    });
+  }, []);
+
+  // Insert move state and handlers
+  const [insertingAfterIndex, setInsertingAfterIndex] = useState<number | null>(null);
+
+  const insertLegalMoves = useMemo(() => {
+    if (insertingAfterIndex === null) return [];
+    return getLegalMovesAtPosition(gameState.moves, insertingAfterIndex);
+  }, [insertingAfterIndex, gameState.moves]);
+
+  const handleRequestInsert = useCallback((afterIndex: number) => {
+    setInsertingAfterIndex(afterIndex);
+  }, []);
+
+  const handleCancelInsert = useCallback(() => {
+    setInsertingAfterIndex(null);
+  }, []);
+
+  const handleInsertMove = useCallback((afterIndex: number, san: string) => {
+    setGameState((prev) => {
+      const newMoves = insertMoveAtIndex(prev.moves, afterIndex, san);
+      return {
+        ...prev,
+        moves: newMoves,
+        selectedMoveIndex: Math.min(afterIndex + 1, newMoves.length - 1),
+      };
+    });
+    setInsertingAfterIndex(null);
+  }, []);
+
+  const handleDeleteMove = useCallback((index: number) => {
+    setGameState((prev) => {
+      const newMoves = deleteMoveAtIndex(prev.moves, index);
+      return {
+        ...prev,
+        moves: newMoves,
+        selectedMoveIndex: Math.min(Math.max(index - 1, 0), newMoves.length - 1),
       };
     });
   }, []);
@@ -289,6 +328,12 @@ export default function App() {
                   selectedIndex={gameState.selectedMoveIndex}
                   onSelectMove={handleSelectMove}
                   onCorrectMove={handleCorrectMove}
+                  onInsertMove={handleInsertMove}
+                  onDeleteMove={handleDeleteMove}
+                  insertLegalMoves={insertLegalMoves}
+                  onRequestInsert={handleRequestInsert}
+                  insertingAfterIndex={insertingAfterIndex}
+                  onCancelInsert={handleCancelInsert}
                 />
               </div>
             </div>

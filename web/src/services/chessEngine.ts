@@ -428,6 +428,119 @@ export function revalidateFromIndex(
 }
 
 /**
+ * Insert a new move after a given index and revalidate the entire sequence.
+ * insertAfterIndex = -1 means insert before all moves (new first move).
+ * The inserted SAN must be a legal move at that position.
+ */
+export function insertMoveAtIndex(
+  currentMoves: import('../types').ValidatedMove[],
+  insertAfterIndex: number,
+  newSan: string
+): import('../types').ValidatedMove[] {
+  // Build raw pairs from current moves, inserting the new move
+  const flatMoves: { san: string; color: 'w' | 'b'; moveNumber: number; rawOcr?: string; isInserted?: boolean }[] = [];
+
+  for (let i = 0; i < currentMoves.length; i++) {
+    flatMoves.push({
+      san: currentMoves[i].rawOcr || currentMoves[i].san,
+      color: currentMoves[i].color,
+      moveNumber: currentMoves[i].moveNumber,
+      rawOcr: currentMoves[i].rawOcr,
+    });
+  }
+
+  // Determine the color for the inserted move
+  let insertColor: 'w' | 'b';
+  if (insertAfterIndex < 0) {
+    insertColor = 'w'; // first move is always white
+  } else if (insertAfterIndex < flatMoves.length) {
+    const prev = flatMoves[insertAfterIndex];
+    insertColor = prev.color === 'w' ? 'b' : 'w';
+  } else {
+    // Appending at end
+    const last = flatMoves[flatMoves.length - 1];
+    insertColor = last ? (last.color === 'w' ? 'b' : 'w') : 'w';
+  }
+
+  // Insert the new move
+  const insertPos = insertAfterIndex + 1;
+  flatMoves.splice(insertPos, 0, {
+    san: newSan,
+    color: insertColor,
+    moveNumber: 0, // will be recalculated
+    isInserted: true,
+  });
+
+  // Recalculate move numbers and colors based on position
+  for (let i = 0; i < flatMoves.length; i++) {
+    flatMoves[i].color = i % 2 === 0 ? 'w' : 'b';
+    flatMoves[i].moveNumber = Math.floor(i / 2) + 1;
+  }
+
+  // Convert back to raw pairs
+  const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
+  for (let i = 0; i < flatMoves.length; i++) {
+    const fm = flatMoves[i];
+    if (fm.color === 'w') {
+      rawMoves.push({ moveNumber: fm.moveNumber, white: fm.san, black: '' });
+    } else {
+      const last = rawMoves[rawMoves.length - 1];
+      if (last && last.moveNumber === fm.moveNumber) {
+        last.black = fm.san;
+      } else {
+        rawMoves.push({ moveNumber: fm.moveNumber, white: '', black: fm.san });
+      }
+    }
+  }
+
+  const result = validateMoveSequence(rawMoves);
+
+  // Mark the inserted move as corrected
+  if (insertPos < result.length) {
+    result[insertPos].matchType = 'corrected';
+  }
+
+  return result;
+}
+
+/**
+ * Delete a move at a given index and revalidate the entire sequence.
+ */
+export function deleteMoveAtIndex(
+  currentMoves: import('../types').ValidatedMove[],
+  deleteIndex: number,
+): import('../types').ValidatedMove[] {
+  const flatMoves: { san: string; rawOcr?: string }[] = [];
+
+  for (let i = 0; i < currentMoves.length; i++) {
+    if (i === deleteIndex) continue;
+    flatMoves.push({
+      san: currentMoves[i].rawOcr || currentMoves[i].san,
+      rawOcr: currentMoves[i].rawOcr,
+    });
+  }
+
+  // Rebuild raw pairs
+  const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
+  for (let i = 0; i < flatMoves.length; i++) {
+    const color = i % 2 === 0 ? 'w' : 'b';
+    const moveNum = Math.floor(i / 2) + 1;
+    if (color === 'w') {
+      rawMoves.push({ moveNumber: moveNum, white: flatMoves[i].san, black: '' });
+    } else {
+      const last = rawMoves[rawMoves.length - 1];
+      if (last && last.moveNumber === moveNum) {
+        last.black = flatMoves[i].san;
+      } else {
+        rawMoves.push({ moveNumber: moveNum, white: '', black: flatMoves[i].san });
+      }
+    }
+  }
+
+  return validateMoveSequence(rawMoves);
+}
+
+/**
  * Get legal moves at a specific position (after applying moves up to index).
  */
 export function getLegalMovesAtPosition(
