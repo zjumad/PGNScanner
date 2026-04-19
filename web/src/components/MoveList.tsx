@@ -69,18 +69,16 @@ export default function MoveList({
 
     // If we have bbox data, use it for precise cropping
     if (bbox) {
-      let cropY = bbox.y;
-      let cropH = bbox.height;
       let cropX = bbox.x;
       let cropW = bbox.width;
+      // Use exact row Y boundaries for seamless tiling — no vertical padding
+      const cropY = bbox.y;
+      const cropH = bbox.height;
 
-      // Add some padding around the crop (10% of crop size on each side)
+      // Add horizontal padding only (10% of width on each side)
       const padX = cropW * 0.1;
-      const padY = cropH * 0.3;
       cropX = Math.max(0, cropX - padX);
-      cropY = Math.max(0, cropY - padY);
       cropW = Math.min(1 - cropX, cropW + 2 * padX);
-      cropH = Math.min(1 - cropY, cropH + 2 * padY);
 
       // Zoom so that the crop fills the container
       const zoomX = 1 / cropW;
