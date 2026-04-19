@@ -2,6 +2,8 @@ import type { GameHeader, RecognizedMove } from '../types';
 
 export type ApiProvider = 'gemini' | 'openai';
 
+const BUILTIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string || '';
+
 export interface OcrResult {
   header: GameHeader;
   moves: RecognizedMove[];
@@ -60,10 +62,31 @@ Return your response as a JSON object with this exact structure:
     "result": "1-0 | 0-1 | 1/2-1/2 | *"
   },
   "moves": [
-    { "moveNumber": 1, "whiteMove": "e4", "blackMove": "e5", "whiteConfidence": "high", "blackConfidence": "high" },
-    { "moveNumber": 2, "whiteMove": "Nf3", "blackMove": "Nc6", "whiteConfidence": "high", "blackConfidence": "medium" }
+    {
+      "moveNumber": 1,
+      "whiteMove": "e4", "blackMove": "e5",
+      "whiteConfidence": "high", "blackConfidence": "high",
+      "rowBBox": { "x": 0.05, "y": 0.18, "width": 0.35, "height": 0.02 },
+      "rotation": 0
+    }
   ]
 }
+
+ROW BOUNDING BOX INSTRUCTIONS (rowBBox):
+For EVERY move, you MUST independently locate the exact position of the row containing the White and Black notation cells in the image. Do NOT estimate positions by assuming uniform grid spacing — each row must be individually found.
+
+- Coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
+- "x": left edge of the White notation cell (excluding the printed move number)
+- "y": top edge of the row
+- "width": width spanning from the left edge of the White cell to the right edge of the Black cell
+- "height": height of the row
+- The bounding box covers BOTH the White and Black notation cells as a single region, but NOT the printed move number column.
+- For moves 1-30 (left half of sheet): rows are in the left portion of the image.
+- For moves 31-60 (right half of sheet): rows are in the right portion of the image.
+- If the photo is rotated/sideways, the coordinates should still be relative to the image as-is (before any rotation correction).
+
+ROTATION:
+- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient this portion of the score sheet upright. Usually all moves share the same rotation. 0 means the text is already upright.
 
 Confidence levels:
 - "high": clearly readable
@@ -97,6 +120,17 @@ function parseOcrResponse(content: string): OcrResult {
   throw new Error('Failed to parse OCR response. The API response may be too long or malformed.');
 }
 
+function parseBBox(raw: unknown): import('../types').CellBoundingBox | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const b = raw as Record<string, unknown>;
+  const x = Number(b.x);
+  const y = Number(b.y);
+  const w = Number(b.width);
+  const h = Number(b.height);
+  if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) return undefined;
+  return { x, y, width: w, height: h };
+}
+
 function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
   const header = parsed.header as Record<string, unknown> | undefined;
   const moves = parsed.moves as Record<string, unknown>[] | undefined;
@@ -113,13 +147,18 @@ function normalizeOcrResult(parsed: Record<string, unknown>): OcrResult {
       eco: (header?.eco as string) || '',
       result: (header?.result as string) || '*',
     },
-    moves: (moves || []).map((m) => ({
-      moveNumber: m.moveNumber as number,
-      whiteMove: (m.whiteMove as string) || '',
-      blackMove: (m.blackMove as string) || '',
-      whiteConfidence: (m.whiteConfidence as 'high' | 'medium' | 'low') || 'medium',
-      blackConfidence: (m.blackConfidence as 'high' | 'medium' | 'low') || 'medium',
-    })),
+    moves: (moves || []).map((m) => {
+      const rot = Number(m.rotation);
+      return {
+        moveNumber: m.moveNumber as number,
+        whiteMove: (m.whiteMove as string) || '',
+        blackMove: (m.blackMove as string) || '',
+        whiteConfidence: (m.whiteConfidence as 'high' | 'medium' | 'low') || 'medium',
+        blackConfidence: (m.blackConfidence as 'high' | 'medium' | 'low') || 'medium',
+        rowBBox: parseBBox(m.rowBBox),
+        rotation: (rot === 0 || rot === 90 || rot === 180 || rot === 270 ? rot : undefined) as 0 | 90 | 180 | 270 | undefined,
+      };
+    }),
   };
 }
 
@@ -257,7 +296,7 @@ async function recognizeWithGemini(
         ],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16384,
         },
       }),
     }
@@ -311,7 +350,7 @@ async function recognizeWithOpenAI(
           ],
         },
       ],
-      max_tokens: 8192,
+      max_tokens: 16384,
       temperature: 0,
     }),
   });
@@ -335,10 +374,13 @@ async function recognizeWithOpenAI(
 
 export async function recognizeScoreSheet(
   imageBase64: string,
-  apiKey: string,
   imageType: string = 'image/jpeg',
   provider: ApiProvider = 'gemini'
 ): Promise<OcrResult> {
+  const apiKey = BUILTIN_GEMINI_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key is not configured. Set VITE_GEMINI_API_KEY in web/.env');
+  }
   switch (provider) {
     case 'gemini':
       return recognizeWithGemini(imageBase64, apiKey, imageType);
@@ -364,4 +406,60 @@ export function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Merge OCR results from multiple pages into a single result.
+ * Moves are merged by moveNumber + color: for overlapping half-moves,
+ * the version with higher confidence is kept.
+ * Header fields use the first non-empty value across pages.
+ */
+export function mergeOcrResults(results: OcrResult[]): OcrResult {
+  if (results.length === 0) {
+    return { header: { event: '', date: '', round: '', white: '', black: '', whiteElo: '', blackElo: '', opening: '', eco: '', result: '*' }, moves: [] };
+  }
+  if (results.length === 1) return results[0];
+
+  // Merge headers: first non-empty value wins
+  const mergedHeader = { ...results[0].header };
+  for (const r of results.slice(1)) {
+    for (const key of Object.keys(mergedHeader) as (keyof typeof mergedHeader)[]) {
+      if (!mergedHeader[key] && r.header[key]) {
+        mergedHeader[key] = r.header[key];
+      }
+    }
+  }
+
+  // Merge moves by moveNumber: combine white/black from all pages
+  const moveMap = new Map<number, import('../types').RecognizedMove>();
+  const confRank = { high: 3, medium: 2, low: 1 };
+
+  for (const r of results) {
+    for (const m of r.moves) {
+      const existing = moveMap.get(m.moveNumber);
+      if (!existing) {
+        moveMap.set(m.moveNumber, { ...m });
+      } else {
+        // Merge white half-move: keep higher confidence
+        if (m.whiteMove && m.whiteMove.trim()) {
+          if (!existing.whiteMove || !existing.whiteMove.trim() || confRank[m.whiteConfidence] > confRank[existing.whiteConfidence]) {
+            existing.whiteMove = m.whiteMove;
+            existing.whiteConfidence = m.whiteConfidence;
+            existing.rowBBox = m.rowBBox;
+          }
+        }
+        // Merge black half-move: keep higher confidence
+        if (m.blackMove && m.blackMove.trim()) {
+          if (!existing.blackMove || !existing.blackMove.trim() || confRank[m.blackConfidence] > confRank[existing.blackConfidence]) {
+            existing.blackMove = m.blackMove;
+            existing.blackConfidence = m.blackConfidence;
+            if (!existing.rowBBox) existing.rowBBox = m.rowBBox;
+          }
+        }
+      }
+    }
+  }
+
+  const mergedMoves = [...moveMap.values()].sort((a, b) => a.moveNumber - b.moveNumber);
+  return { header: mergedHeader, moves: mergedMoves };
 }

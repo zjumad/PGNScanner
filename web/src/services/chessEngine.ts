@@ -256,7 +256,7 @@ export function matchMoveToLegal(
  * to legal moves at each position.
  */
 export function validateMoveSequence(
-  moves: { moveNumber: number; white: string; black: string }[]
+  moves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[]
 ): import('../types').ValidatedMove[] {
   const chess = new Chess();
   const validated: import('../types').ValidatedMove[] = [];
@@ -288,6 +288,8 @@ export function validateMoveSequence(
             legalAlternatives: legalMoves,
             fenAfter: chess.fen(),
             fenBefore,
+            bbox: move.rowBBox,
+            rotation: move.rotation,
           });
         } catch {
           // Shouldn't happen since we matched against legal moves, but be defensive
@@ -302,6 +304,8 @@ export function validateMoveSequence(
             legalAlternatives: legalMoves,
             fenAfter: fenBefore,
             fenBefore,
+            bbox: move.rowBBox,
+            rotation: move.rotation,
           });
           break;
         }
@@ -318,6 +322,8 @@ export function validateMoveSequence(
           legalAlternatives: legalMoves,
           fenAfter: fenBefore,
           fenBefore,
+          bbox: move.rowBBox,
+          rotation: move.rotation,
         });
         break;
       }
@@ -349,6 +355,8 @@ export function validateMoveSequence(
             legalAlternatives: legalMoves,
             fenAfter: chess.fen(),
             fenBefore,
+            bbox: move.rowBBox,
+            rotation: move.rotation,
           });
         } catch {
           validated.push({
@@ -362,6 +370,8 @@ export function validateMoveSequence(
             legalAlternatives: legalMoves,
             fenAfter: fenBefore,
             fenBefore,
+            bbox: move.rowBBox,
+            rotation: move.rotation,
           });
           break;
         }
@@ -377,6 +387,8 @@ export function validateMoveSequence(
           legalAlternatives: legalMoves,
           fenAfter: fenBefore,
           fenBefore,
+          bbox: move.rowBBox,
+          rotation: move.rotation,
         });
         break;
       }
@@ -396,8 +408,8 @@ export function revalidateFromIndex(
   newSan: string
 ): import('../types').ValidatedMove[] {
   // Rebuild move list as raw pairs, using rawOcr to preserve original text
-  const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
-  let currentPair: { moveNumber: number; white: string; black: string } | null = null;
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
+  let currentPair: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 } | null = null;
 
   for (let i = 0; i < currentMoves.length; i++) {
     const m = currentMoves[i];
@@ -406,12 +418,14 @@ export function revalidateFromIndex(
 
     if (m.color === 'w') {
       if (currentPair) rawMoves.push(currentPair);
-      currentPair = { moveNumber: m.moveNumber, white: text, black: '' };
+      currentPair = { moveNumber: m.moveNumber, white: text, black: '', rowBBox: m.bbox, rotation: m.rotation };
     } else {
       if (!currentPair) {
-        currentPair = { moveNumber: m.moveNumber, white: '', black: text };
+        currentPair = { moveNumber: m.moveNumber, white: '', black: text, rowBBox: m.bbox, rotation: m.rotation };
       } else {
         currentPair.black = text;
+        if (!currentPair.rowBBox) currentPair.rowBBox = m.bbox;
+        if (m.rotation != null) currentPair.rotation = m.rotation;
       }
     }
   }
@@ -438,7 +452,7 @@ export function insertMoveAtIndex(
   newSan: string
 ): import('../types').ValidatedMove[] {
   // Build raw pairs from current moves, inserting the new move
-  const flatMoves: { san: string; color: 'w' | 'b'; moveNumber: number; rawOcr?: string; isInserted?: boolean }[] = [];
+  const flatMoves: { san: string; color: 'w' | 'b'; moveNumber: number; rawOcr?: string; bbox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270; isInserted?: boolean }[] = [];
 
   for (let i = 0; i < currentMoves.length; i++) {
     flatMoves.push({
@@ -446,6 +460,8 @@ export function insertMoveAtIndex(
       color: currentMoves[i].color,
       moveNumber: currentMoves[i].moveNumber,
       rawOcr: currentMoves[i].rawOcr,
+      bbox: currentMoves[i].bbox,
+      rotation: currentMoves[i].rotation,
     });
   }
 
@@ -478,17 +494,19 @@ export function insertMoveAtIndex(
   }
 
   // Convert back to raw pairs
-  const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
   for (let i = 0; i < flatMoves.length; i++) {
     const fm = flatMoves[i];
     if (fm.color === 'w') {
-      rawMoves.push({ moveNumber: fm.moveNumber, white: fm.san, black: '' });
+      rawMoves.push({ moveNumber: fm.moveNumber, white: fm.san, black: '', rowBBox: fm.bbox, rotation: fm.rotation });
     } else {
       const last = rawMoves[rawMoves.length - 1];
       if (last && last.moveNumber === fm.moveNumber) {
         last.black = fm.san;
+        if (!last.rowBBox) last.rowBBox = fm.bbox;
+        if (fm.rotation != null) last.rotation = fm.rotation;
       } else {
-        rawMoves.push({ moveNumber: fm.moveNumber, white: '', black: fm.san });
+        rawMoves.push({ moveNumber: fm.moveNumber, white: '', black: fm.san, rowBBox: fm.bbox, rotation: fm.rotation });
       }
     }
   }
@@ -510,29 +528,33 @@ export function deleteMoveAtIndex(
   currentMoves: import('../types').ValidatedMove[],
   deleteIndex: number,
 ): import('../types').ValidatedMove[] {
-  const flatMoves: { san: string; rawOcr?: string }[] = [];
+  const flatMoves: { san: string; rawOcr?: string; bbox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
 
   for (let i = 0; i < currentMoves.length; i++) {
     if (i === deleteIndex) continue;
     flatMoves.push({
       san: currentMoves[i].rawOcr || currentMoves[i].san,
       rawOcr: currentMoves[i].rawOcr,
+      bbox: currentMoves[i].bbox,
+      rotation: currentMoves[i].rotation,
     });
   }
 
   // Rebuild raw pairs
-  const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
+  const rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox; rotation?: 0 | 90 | 180 | 270 }[] = [];
   for (let i = 0; i < flatMoves.length; i++) {
     const color = i % 2 === 0 ? 'w' : 'b';
     const moveNum = Math.floor(i / 2) + 1;
     if (color === 'w') {
-      rawMoves.push({ moveNumber: moveNum, white: flatMoves[i].san, black: '' });
+      rawMoves.push({ moveNumber: moveNum, white: flatMoves[i].san, black: '', rowBBox: flatMoves[i].bbox, rotation: flatMoves[i].rotation });
     } else {
       const last = rawMoves[rawMoves.length - 1];
       if (last && last.moveNumber === moveNum) {
         last.black = flatMoves[i].san;
+        if (!last.rowBBox) last.rowBBox = flatMoves[i].bbox;
+        if (flatMoves[i].rotation != null) last.rotation = flatMoves[i].rotation;
       } else {
-        rawMoves.push({ moveNumber: moveNum, white: '', black: flatMoves[i].san });
+        rawMoves.push({ moveNumber: moveNum, white: '', black: flatMoves[i].san, rowBBox: flatMoves[i].bbox, rotation: flatMoves[i].rotation });
       }
     }
   }
@@ -565,6 +587,7 @@ export function getLegalMovesAtPosition(
 /**
  * Generate PGN string from validated moves and header.
  * Forced guesses are annotated with comments.
+ * Speculative moves are excluded.
  */
 export function generatePgn(
   header: import('../types').GameHeader,
@@ -587,7 +610,7 @@ export function generatePgn(
 
   let moveText = '';
   for (const move of moves) {
-    if (!move.isValid) break;
+    if (!move.isValid || move.matchType === 'speculative') break;
     if (move.color === 'w') {
       moveText += `${move.moveNumber}. ${move.san} `;
     } else {
@@ -601,5 +624,143 @@ export function generatePgn(
   moveText += header.result;
 
   return `${tags}\n\n${moveText.trim()}`;
+}
+
+/**
+ * Build speculative tail entries for raw OCR moves that were not validated.
+ * These are appended after the validated moves so the user can see the full
+ * OCR output even when validation stops early.
+ */
+export function buildSpeculativeTail(
+  rawMoves: { moveNumber: number; white: string; black: string }[],
+  validatedCount: number,
+  lastFen: string
+): import('../types').ValidatedMove[] {
+  // Count how many half-moves the raw data contains
+  let totalHalfMoves = 0;
+  for (const m of rawMoves) {
+    if (m.white && m.white.trim()) totalHalfMoves++;
+    if (m.black && m.black.trim()) totalHalfMoves++;
+  }
+
+  if (totalHalfMoves <= validatedCount) return [];
+
+  // Skip the first validatedCount half-moves, then emit the rest as speculative
+  const speculative: import('../types').ValidatedMove[] = [];
+  let halfIndex = 0;
+
+  for (const m of rawMoves) {
+    if (m.white && m.white.trim()) {
+      if (halfIndex >= validatedCount) {
+        speculative.push({
+          moveNumber: m.moveNumber,
+          color: 'w',
+          san: m.white,
+          rawOcr: m.white,
+          confidence: 'low',
+          matchType: 'speculative',
+          isValid: false,
+          legalAlternatives: [],
+          fenAfter: lastFen,
+          fenBefore: lastFen,
+        });
+      }
+      halfIndex++;
+    }
+    if (m.black && m.black.trim()) {
+      if (halfIndex >= validatedCount) {
+        speculative.push({
+          moveNumber: m.moveNumber,
+          color: 'b',
+          san: m.black,
+          rawOcr: m.black,
+          confidence: 'low',
+          matchType: 'speculative',
+          isValid: false,
+          legalAlternatives: [],
+          fenAfter: lastFen,
+          fenBefore: lastFen,
+        });
+      }
+      halfIndex++;
+    }
+  }
+
+  return speculative;
+}
+
+/**
+ * Generate a CSV string comparing raw OCR text with corrected SAN for each move.
+ * Useful for quality tracking and OCR improvement analysis.
+ */
+export function generateRawOcrCsv(
+  moves: import('../types').ValidatedMove[]
+): string {
+  const header = 'MoveNumber,Color,RawOCR,CorrectedSAN,MatchType,Confidence';
+  const rows = moves.map((m) => {
+    const raw = (m.rawOcr || '').replace(/"/g, '""');
+    const san = m.san.replace(/"/g, '""');
+    const color = m.color === 'w' ? 'White' : 'Black';
+    return `${m.moveNumber},${color},"${raw}","${san}",${m.matchType},${m.confidence}`;
+  });
+  return [header, ...rows].join('\n');
+}
+
+/**
+ * Get smart move suggestions by checking which legal moves at the current position
+ * lead to a position where the NEXT raw OCR move can be matched.
+ * Returns suggested moves sorted by how well the next move matches.
+ */
+export function getSmartSuggestions(
+  moves: import('../types').ValidatedMove[],
+  currentIndex: number
+): string[] {
+  if (currentIndex < 0 || currentIndex >= moves.length) return [];
+  const current = moves[currentIndex];
+
+  // Find the next non-empty raw OCR text after the current move
+  let nextRawOcr = '';
+  for (let i = currentIndex + 1; i < moves.length; i++) {
+    const raw = moves[i].rawOcr || moves[i].san;
+    if (raw && raw.trim()) {
+      nextRawOcr = raw.trim();
+      break;
+    }
+  }
+  if (!nextRawOcr) return [];
+
+  // Get legal moves at the current position
+  const chess = new Chess();
+  try {
+    chess.load(current.fenBefore);
+  } catch {
+    return [];
+  }
+  const legalMoves = chess.moves();
+  if (legalMoves.length === 0) return [];
+
+  // For each legal move, try it, then check if the next OCR text matches
+  const scored: { move: string; score: number }[] = [];
+
+  for (const candidate of legalMoves) {
+    const trial = new Chess();
+    trial.load(current.fenBefore);
+    try {
+      trial.move(candidate);
+    } catch {
+      continue;
+    }
+    const nextLegal = trial.moves();
+    if (nextLegal.length === 0) continue;
+
+    const match = matchMoveToLegal(nextRawOcr, nextLegal, false);
+    if (match && match.score >= 0.5) {
+      scored.push({ move: candidate, score: match.score });
+    }
+  }
+
+  // Sort by how well the next move matches (higher is better)
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.move);
 }
 

@@ -1,13 +1,11 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { AppStep, GameHeader, GameState, RawOcrMovePair } from './types';
-import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition } from './services/chessEngine';
-import { recognizeScoreSheet, fileToBase64 } from './services/visionApi';
-import type { ApiProvider } from './services/visionApi';
+import type { AppStep, GameHeader, GameState } from './types';
+import { validateMoveSequence, revalidateFromIndex, insertMoveAtIndex, deleteMoveAtIndex, generatePgn, getLegalMovesAtPosition, buildSpeculativeTail, getSmartSuggestions } from './services/chessEngine';
+import { recognizeScoreSheet, fileToBase64, mergeOcrResults } from './services/visionApi';
 import ImageUpload from './components/ImageUpload';
 import HeaderEditor from './components/HeaderEditor';
 import MoveList from './components/MoveList';
 import BoardViewer from './components/BoardViewer';
-import ApiKeyDialog from './components/ApiKeyDialog';
 import LegalMovesPanel from './components/LegalMovesPanel';
 import './index.css';
 
@@ -28,54 +26,107 @@ const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export default function App() {
   const [step, setStep] = useState<AppStep>('upload');
-  const [apiKey, setApiKey] = useState<string>('');
-  const [apiProvider, setApiProvider] = useState<ApiProvider>('gemini');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<'board' | 'moves' | 'image'>('board');
+  const [mobileTab, setMobileTab] = useState<'board' | 'info' | 'debug'>('board');
+  const [_imageRotations, setImageRotations] = useState<(0 | 90 | 180 | 270)[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [rawOcrJson, setRawOcrJson] = useState<string>('');
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
     rawOcrMoves: [],
     corrections: {},
     selectedMoveIndex: -1,
-    imageUrl: null,
+    imageUrls: [],
   });
-  const imageFileRef = useRef<File | null>(null);
+  const imageFilesRef = useRef<File[]>([]);
 
-  // Cleanup image URL on unmount or new scan
-  useEffect(() => {
-    return () => {
-      if (gameState.imageUrl) URL.revokeObjectURL(gameState.imageUrl);
-    };
-  }, [gameState.imageUrl]);
+  // Undo/redo stacks — store snapshots of moves, corrections, and selectedMoveIndex
+  interface UndoSnapshot {
+    moves: import('./types').ValidatedMove[];
+    corrections: Record<number, string>;
+    selectedMoveIndex: number;
+  }
+  const undoStackRef = useRef<UndoSnapshot[]>([]);
+  const redoStackRef = useRef<UndoSnapshot[]>([]);
 
-  const handleApiKeySet = useCallback((key: string, provider: ApiProvider) => {
-    setApiKey(key);
-    setApiProvider(provider);
+  const pushUndo = useCallback((state: GameState) => {
+    undoStackRef.current = [...undoStackRef.current, {
+      moves: state.moves,
+      corrections: state.corrections,
+      selectedMoveIndex: state.selectedMoveIndex,
+    }];
+    redoStackRef.current = [];
   }, []);
 
-  const handleImageSelected = useCallback(
-    async (file: File) => {
-      imageFileRef.current = file;
+  const handleUndo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const snapshot = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    setGameState((prev) => {
+      redoStackRef.current = [...redoStackRef.current, {
+        moves: prev.moves,
+        corrections: prev.corrections,
+        selectedMoveIndex: prev.selectedMoveIndex,
+      }];
+      return { ...prev, ...snapshot };
+    });
+  }, []);
 
-      if (!apiKey) {
-        setError('Please set your API key first.');
-        return;
-      }
+  const handleRedo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0) return;
+    const snapshot = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    setGameState((prev) => {
+      undoStackRef.current = [...undoStackRef.current, {
+        moves: prev.moves,
+        corrections: prev.corrections,
+        selectedMoveIndex: prev.selectedMoveIndex,
+      }];
+      return { ...prev, ...snapshot };
+    });
+  }, []);
+
+  // Cleanup image URLs on unmount or new scan
+  useEffect(() => {
+    return () => {
+      gameState.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [gameState.imageUrls]);
+
+  const handleImagesSelected = useCallback(
+    async (files: File[]) => {
+      imageFilesRef.current = files;
 
       setIsProcessing(true);
+      setProcessingStatus(`Recognizing image 1 of ${files.length}...`);
       setError(null);
       setStep('processing');
 
       try {
-        const base64 = await fileToBase64(file);
-        const result = await recognizeScoreSheet(base64, apiKey, file.type, apiProvider);
+        // OCR each image sequentially
+        const ocrResults = [];
+        for (let i = 0; i < files.length; i++) {
+          setProcessingStatus(`Recognizing image ${i + 1} of ${files.length}...`);
+          const base64 = await fileToBase64(files[i]);
+          const result = await recognizeScoreSheet(base64, files[i].type);
+          ocrResults.push(result);
+        }
 
-        const rawMoves: RawOcrMovePair[] = result.moves.map((m) => ({
+        // Merge results from all pages
+        const result = mergeOcrResults(ocrResults);
+        setRawOcrJson(JSON.stringify(result, null, 2));
+
+        const rawMoves = result.moves.map((m) => ({
           moveNumber: m.moveNumber,
           white: m.whiteMove,
           black: m.blackMove,
+          rowBBox: m.rowBBox,
+          rotation: m.rotation,
         }));
 
         const validatedMoves = validateMoveSequence(rawMoves);
@@ -87,28 +138,38 @@ export default function App() {
           }
         }
 
-        const imageUrl = URL.createObjectURL(file);
+        // Append speculative tail for unvalidated moves
+        const lastFen = validatedMoves.length > 0
+          ? validatedMoves[validatedMoves.length - 1].fenAfter
+          : STARTING_FEN;
+        const speculative = buildSpeculativeTail(rawMoves, validatedMoves.length, lastFen);
+        const allMoves = [...validatedMoves, ...speculative];
+
+        const imageUrls = files.map((f) => URL.createObjectURL(f));
 
         setGameState((prev) => {
-          if (prev.imageUrl) URL.revokeObjectURL(prev.imageUrl);
+          prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
           return {
             header: result.header,
-            moves: validatedMoves,
-            rawOcrMoves: rawMoves,
+            moves: allMoves,
+            rawOcrMoves: rawMoves.map(m => ({ moveNumber: m.moveNumber, white: m.white, black: m.black })),
             corrections: {},
-            selectedMoveIndex: validatedMoves.length > 0 ? 0 : -1,
-            imageUrl,
+            selectedMoveIndex: allMoves.length > 0 ? 0 : -1,
+            imageUrls,
           };
         });
+        setImageRotations(files.map(() => 0));
+        setActiveImageIndex(0);
         setStep('review');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to process image');
         setStep('upload');
       } finally {
         setIsProcessing(false);
+        setProcessingStatus('');
       }
     },
-    [apiKey, apiProvider]
+    []
   );
 
   const handleSelectMove = useCallback((index: number) => {
@@ -117,18 +178,25 @@ export default function App() {
 
   const handleCorrectMove = useCallback((index: number, newSan: string) => {
     setGameState((prev) => {
+      pushUndo(prev);
       const newMoves = revalidateFromIndex(prev.moves, index, newSan);
+      // Rebuild speculative tail from rawOcrMoves
+      const lastFen = newMoves.length > 0
+        ? newMoves[newMoves.length - 1].fenAfter
+        : STARTING_FEN;
+      const speculative = buildSpeculativeTail(prev.rawOcrMoves, newMoves.length, lastFen);
+      const allMoves = [...newMoves, ...speculative];
       const newCorrections = { ...prev.corrections, [index]: newSan };
       // Advance to next move so the board shows the result of the correction
-      const nextIndex = Math.min(index + 1, newMoves.length - 1);
+      const nextIndex = Math.min(index + 1, allMoves.length - 1);
       return {
         ...prev,
-        moves: newMoves,
+        moves: allMoves,
         corrections: newCorrections,
         selectedMoveIndex: nextIndex,
       };
     });
-  }, []);
+  }, [pushUndo]);
 
   // Insert move state and handlers
   const [insertingAfterIndex, setInsertingAfterIndex] = useState<number | null>(null);
@@ -148,29 +216,40 @@ export default function App() {
 
   const handleInsertMove = useCallback((afterIndex: number, san: string) => {
     setGameState((prev) => {
+      pushUndo(prev);
       const newMoves = insertMoveAtIndex(prev.moves, afterIndex, san);
-      // Advance past the inserted move to show its result
+      const lastFen = newMoves.length > 0
+        ? newMoves[newMoves.length - 1].fenAfter
+        : STARTING_FEN;
+      const speculative = buildSpeculativeTail(prev.rawOcrMoves, newMoves.length, lastFen);
+      const allMoves = [...newMoves, ...speculative];
       const insertedAt = afterIndex + 1;
-      const nextIndex = Math.min(insertedAt + 1, newMoves.length - 1);
+      const nextIndex = Math.min(insertedAt + 1, allMoves.length - 1);
       return {
         ...prev,
-        moves: newMoves,
+        moves: allMoves,
         selectedMoveIndex: nextIndex,
       };
     });
     setInsertingAfterIndex(null);
-  }, []);
+  }, [pushUndo]);
 
   const handleDeleteMove = useCallback((index: number) => {
     setGameState((prev) => {
+      pushUndo(prev);
       const newMoves = deleteMoveAtIndex(prev.moves, index);
+      const lastFen = newMoves.length > 0
+        ? newMoves[newMoves.length - 1].fenAfter
+        : STARTING_FEN;
+      const speculative = buildSpeculativeTail(prev.rawOcrMoves, newMoves.length, lastFen);
+      const allMoves = [...newMoves, ...speculative];
       return {
         ...prev,
-        moves: newMoves,
-        selectedMoveIndex: Math.min(Math.max(index - 1, 0), newMoves.length - 1),
+        moves: allMoves,
+        selectedMoveIndex: Math.min(Math.max(index - 1, 0), allMoves.length - 1),
       };
     });
-  }, []);
+  }, [pushUndo]);
 
   const handleHeaderChange = useCallback((header: GameHeader) => {
     setGameState((prev) => ({ ...prev, header }));
@@ -192,19 +271,23 @@ export default function App() {
 
   const handleStartOver = useCallback(() => {
     setStep('upload');
+    setImageRotations([]);
+    setActiveImageIndex(0);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
     setGameState((prev) => {
-      if (prev.imageUrl) URL.revokeObjectURL(prev.imageUrl);
+      prev.imageUrls.forEach((url) => URL.revokeObjectURL(url));
       return {
         header: DEFAULT_HEADER,
         moves: [],
         rawOcrMoves: [],
         corrections: {},
         selectedMoveIndex: -1,
-        imageUrl: null,
+        imageUrls: [],
       };
     });
     setError(null);
-    imageFileRef.current = null;
+    imageFilesRef.current = [];
   }, []);
 
   const handleNavigate = useCallback(
@@ -213,13 +296,13 @@ export default function App() {
         let newIndex = prev.selectedMoveIndex;
         switch (direction) {
           case 'prev':
-            newIndex = Math.max(-1, prev.selectedMoveIndex - 1);
+            newIndex = Math.max(0, prev.selectedMoveIndex - 1);
             break;
           case 'next':
             newIndex = Math.min(prev.moves.length - 1, prev.selectedMoveIndex + 1);
             break;
           case 'start':
-            newIndex = -1;
+            newIndex = prev.moves.length > 0 ? 0 : -1;
             break;
           case 'end':
             newIndex = prev.moves.length - 1;
@@ -231,9 +314,52 @@ export default function App() {
     []
   );
 
+  // "Needs attention" = invalid, forced, or fuzzy (but not corrected)
+  const needsAttention = useCallback((m: import('./types').ValidatedMove) => {
+    if (m.matchType === 'speculative') return true;
+    if (!m.isValid) return true;
+    if (m.matchType === 'forced') return true;
+    if (m.matchType === 'fuzzy') return true;
+    return false;
+  }, []);
+
+  const handleNavigateToError = useCallback(
+    (direction: 'next' | 'prev') => {
+      setGameState((prev) => {
+        const { moves, selectedMoveIndex } = prev;
+        if (direction === 'next') {
+          for (let i = selectedMoveIndex + 1; i < moves.length; i++) {
+            if (needsAttention(moves[i])) return { ...prev, selectedMoveIndex: i };
+          }
+        } else {
+          for (let i = selectedMoveIndex - 1; i >= 0; i--) {
+            if (needsAttention(moves[i])) return { ...prev, selectedMoveIndex: i };
+          }
+        }
+        return prev;
+      });
+    },
+    [needsAttention]
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (step !== 'review') return;
+      // Undo/Redo — skip when inside text inputs
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
         handleNavigate('prev');
@@ -248,7 +374,7 @@ export default function App() {
         handleNavigate('end');
       }
     },
-    [step, handleNavigate]
+    [step, handleNavigate, handleUndo, handleRedo]
   );
 
   // When inserting, show the position and legal moves at the insert point
@@ -259,23 +385,34 @@ export default function App() {
     ? gameState.moves[gameState.selectedMoveIndex]
     : null;
 
+  const isSpeculativeSelected = selectedMove?.matchType === 'speculative';
+
   // Board position: during insert, show position after the insert point
   const insertPointMove = isInserting && insertingAfterIndex >= 0
     ? gameState.moves[insertingAfterIndex]
     : null;
 
   // For the interactive board, show the position BEFORE the current move
-  // so the user can drag pieces to make/correct the move
+  // so the user can drag pieces to make/correct the move.
+  // For speculative moves, show the last known valid position.
   const boardFen = isInserting
     ? (insertPointMove?.isValid ? insertPointMove.fenAfter : insertPointMove?.fenBefore ?? STARTING_FEN)
     : selectedMove
-      ? selectedMove.fenBefore
+      ? (isSpeculativeSelected ? selectedMove.fenBefore : selectedMove.fenBefore)
       : STARTING_FEN;
 
   // Legal moves: during insert, use the insert legal moves; otherwise from selected move
+  // Speculative moves have no legal alternatives
   const legalMovesAtSelected = isInserting
     ? insertLegalMoves
-    : selectedMove?.legalAlternatives ?? [];
+    : (isSpeculativeSelected ? [] : selectedMove?.legalAlternatives ?? []);
+
+  // Smart suggestions: when a move needs attention, suggest based on the next move
+  const smartSuggestions = useMemo(() => {
+    if (isInserting || !selectedMove) return [];
+    if (selectedMove.matchType === 'corrected' || selectedMove.matchType === 'exact') return [];
+    return getSmartSuggestions(gameState.moves, gameState.selectedMoveIndex);
+  }, [isInserting, selectedMove, gameState.moves, gameState.selectedMoveIndex]);
 
   // Label for legal moves panel
   const legalMovesLabel = isInserting
@@ -310,7 +447,6 @@ export default function App() {
             <h1 className="text-lg sm:text-xl font-bold text-gray-800">PGN Scanner</h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            <ApiKeyDialog onKeySet={handleApiKeySet} />
             {step === 'review' && (
               <button
                 onClick={handleStartOver}
@@ -337,7 +473,7 @@ export default function App() {
       <main className="max-w-[600px] mx-auto px-2 sm:px-4 py-2 sm:py-6">
         {(step === 'upload' || step === 'processing') && (
           <div className="py-6 sm:py-12">
-            <ImageUpload onImageSelected={handleImageSelected} isProcessing={isProcessing} />
+            <ImageUpload onImagesSelected={handleImagesSelected} isProcessing={isProcessing} processingStatus={processingStatus} />
           </div>
         )}
 
@@ -346,9 +482,9 @@ export default function App() {
             {/* Tab bar — always visible */}
             <div className="flex border-b border-gray-200 bg-white rounded-t-lg mb-2">
               {[
-                { id: 'board' as const, label: '♟ Board', icon: '♟' },
-                { id: 'moves' as const, label: '☰ Moves', icon: '☰' },
-                { id: 'image' as const, label: '📷 Image', icon: '📷' },
+                { id: 'board' as const, label: '♟ Board' },
+                { id: 'info' as const, label: 'ℹ️ Game Info' },
+                { id: 'debug' as const, label: '🐛 Debug' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -377,7 +513,7 @@ export default function App() {
                   <div className="w-full max-w-[480px]">
                     <BoardViewer
                       fen={boardFen}
-                      interactive={selectedMove !== null || isInserting}
+                      interactive={(selectedMove !== null && !isSpeculativeSelected) || isInserting}
                       legalMoves={legalMovesAtSelected}
                       onMoveMade={handleBoardMove}
                     />
@@ -388,12 +524,13 @@ export default function App() {
                     onNavigate={handleNavigate}
                     compact
                   />
-                  {(selectedMove || isInserting) && (
+                  {(selectedMove || isInserting) && !isSpeculativeSelected && (
                     <LegalMovesPanel
                       legalMoves={legalMovesAtSelected}
                       currentSan={isInserting ? '' : selectedMove!.san}
                       moveLabel={legalMovesLabel}
                       sideToMove={legalMovesSide}
+                      smartSuggestions={smartSuggestions}
                       onSelectMove={(san) => {
                         if (isInserting) {
                           handleInsertMove(insertingAfterIndex!, san);
@@ -403,6 +540,58 @@ export default function App() {
                       }}
                     />
                   )}
+                  <div className="w-full">
+                    <MoveList
+                      moves={gameState.moves}
+                      selectedIndex={gameState.selectedMoveIndex}
+                      onSelectMove={handleSelectMove}
+                      onInsertMove={handleInsertMove}
+                      onDeleteMove={handleDeleteMove}
+                      insertLegalMoves={insertLegalMoves}
+                      onRequestInsert={handleRequestInsert}
+                      insertingAfterIndex={insertingAfterIndex}
+                      onCancelInsert={handleCancelInsert}
+                      onNavigateToError={handleNavigateToError}
+                      imageUrls={gameState.imageUrls}
+                      imagePageInfo={gameState.imageUrls.length > 0 ? {
+                        total: gameState.imageUrls.length,
+                        current: activeImageIndex,
+                        onPrev: () => setActiveImageIndex(Math.max(0, activeImageIndex - 1)),
+                        onNext: () => setActiveImageIndex(Math.min(gameState.imageUrls.length - 1, activeImageIndex + 1)),
+                        onRotateCW: () => setImageRotations(prev => {
+                          const next = [...prev];
+                          next[activeImageIndex] = ((next[activeImageIndex] + 90) % 360) as 0 | 90 | 180 | 270;
+                          return next;
+                        }),
+                        onRotateCCW: () => setImageRotations(prev => {
+                          const next = [...prev];
+                          next[activeImageIndex] = ((next[activeImageIndex] + 270) % 360) as 0 | 90 | 180 | 270;
+                          return next;
+                        }),
+                      } : undefined}
+                      selectedMove={selectedMove}
+                    />
+                  </div>
+                  <div className="w-full bg-gray-800 text-green-400 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap">
+                      {generatePgn(gameState.header, gameState.moves)}
+                    </pre>
+                  </div>
+                  <div className="w-full">
+                    <button
+                      onClick={handleExportPgn}
+                      className="w-full px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md text-sm"
+                    >
+                      Export PGN
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Game Info tab */}
+              {mobileTab === 'info' && (
+                <div className="flex flex-col gap-3">
+                  <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
                   <button
                     onClick={handleExportPgn}
                     className="w-full px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-md text-sm"
@@ -412,42 +601,15 @@ export default function App() {
                 </div>
               )}
 
-              {/* Moves tab */}
-              {mobileTab === 'moves' && (
-                <div className="flex flex-col gap-3" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                  <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
-                  <div className="flex-1 min-h-0">
-                    <MoveList
-                      moves={gameState.moves}
-                      selectedIndex={gameState.selectedMoveIndex}
-                      onSelectMove={(idx) => {
-                        handleSelectMove(idx);
-                        setMobileTab('board'); // switch to board to see the position
-                      }}
-                      onCorrectMove={handleCorrectMove}
-                      onInsertMove={handleInsertMove}
-                      onDeleteMove={handleDeleteMove}
-                      insertLegalMoves={insertLegalMoves}
-                      onRequestInsert={handleRequestInsert}
-                      insertingAfterIndex={insertingAfterIndex}
-                      onCancelInsert={handleCancelInsert}
-                    />
-                  </div>
-                  <div className="bg-gray-800 text-green-400 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24 overflow-y-auto">
-                    <pre className="whitespace-pre-wrap">
-                      {generatePgn(gameState.header, gameState.moves)}
+              {/* Debug tab */}
+              {mobileTab === 'debug' && (
+                <div className="flex flex-col gap-3">
+                  <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2">OCR Output</h3>
+                    <pre className="bg-gray-900 text-green-400 text-xs font-mono p-3 rounded-lg overflow-auto max-h-[70vh] whitespace-pre-wrap break-words">
+                      {rawOcrJson || 'No OCR data available. Scan an image first.'}
                     </pre>
                   </div>
-                </div>
-              )}
-
-              {/* Image tab */}
-              {mobileTab === 'image' && (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-2">
-                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
-                  {gameState.imageUrl && (
-                    <img src={gameState.imageUrl} alt="Score sheet" className="w-full rounded-md" />
-                  )}
                 </div>
               )}
             </div>
@@ -481,8 +643,8 @@ function NavigationControls({
         {isInserting
           ? <span className="text-green-600">Insert...</span>
           : selectedMove
-            ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
-            : 'Start'}
+            ? `${selectedMove.moveNumber}.${selectedMove.color === 'w' ? 'White' : 'Black'}`
+            : '1.White'}
       </span>
       <button onClick={() => onNavigate('next')} className={btnClass} title="Next move">{'\u25B6'}</button>
       <button onClick={() => onNavigate('end')} className={btnClass} title="Go to end">{'\u23ED'}</button>

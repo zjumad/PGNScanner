@@ -1,40 +1,55 @@
 import { useCallback, useState, useRef } from 'react';
 
 interface ImageUploadProps {
-  onImageSelected: (file: File) => void;
+  onImagesSelected: (files: File[]) => void;
   isProcessing: boolean;
+  processingStatus?: string;
 }
 
-export default function ImageUpload({ onImageSelected, isProcessing }: ImageUploadProps) {
-  const [preview, setPreview] = useState<string | null>(null);
+export default function ImageUpload({ onImagesSelected, isProcessing, processingStatus }: ImageUploadProps) {
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith('image/')) return;
-      const url = URL.createObjectURL(file);
-      setPreview(url);
-      onImageSelected(file);
+  const addFiles = useCallback(
+    (newFiles: File[]) => {
+      const imageFiles = newFiles.filter((f) => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) return;
+      const urls = imageFiles.map((f) => URL.createObjectURL(f));
+      setFiles((prev) => [...prev, ...imageFiles]);
+      setPreviews((prev) => [...prev, ...urls]);
     },
-    [onImageSelected]
+    []
   );
+
+  const removeFile = useCallback((index: number) => {
+    setPreviews((prev) => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      addFiles([...e.dataTransfer.files]);
     },
-    [handleFile]
+    [addFiles]
   );
+
+  const handleSubmit = useCallback(() => {
+    if (files.length > 0) onImagesSelected(files);
+  }, [files, onImagesSelected]);
 
   return (
     <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
       <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Upload Score Sheet Photo</h2>
       <p className="text-gray-500 text-xs sm:text-sm text-center">
         Take a photo of a US Chess Official Score Sheet or upload an existing image.
+        {' '}For 2-sided sheets, add both pages.
       </p>
 
       {/* Drop zone */}
@@ -52,12 +67,29 @@ export default function ImageUpload({ onImageSelected, isProcessing }: ImageUplo
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        {preview ? (
-          <img
-            src={preview}
-            alt="Score sheet preview"
-            className="max-h-80 mx-auto rounded-lg shadow-md"
-          />
+        {previews.length > 0 ? (
+          <div className="flex gap-3 justify-center flex-wrap">
+            {previews.map((url, i) => (
+              <div key={i} className="relative">
+                <img
+                  src={url}
+                  alt={`Page ${i + 1}`}
+                  className="max-h-60 rounded-lg shadow-md"
+                />
+                {!isProcessing && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow"
+                  >
+                    ✕
+                  </button>
+                )}
+                <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                  Page {i + 1}
+                </span>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="py-8">
             <svg
@@ -74,10 +106,10 @@ export default function ImageUpload({ onImageSelected, isProcessing }: ImageUplo
               />
             </svg>
             <p className="text-gray-600 font-medium">
-              Drop image here or click to browse
+              Drop image(s) here or click to browse
             </p>
             <p className="text-gray-400 text-sm mt-1">
-              Supports JPG, PNG, WEBP
+              Supports JPG, PNG, WEBP — multiple pages supported
             </p>
           </div>
         )}
@@ -86,24 +118,35 @@ export default function ImageUpload({ onImageSelected, isProcessing }: ImageUplo
           type="file"
           accept="image/*"
           capture="environment"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const selected = e.target.files;
+            if (selected && selected.length > 0) addFiles([...selected]);
+            if (fileInputRef.current) fileInputRef.current.value = '';
           }}
         />
       </div>
 
-      {preview && !isProcessing && (
-        <button
-          onClick={() => {
-            setPreview(null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-          }}
-          className="text-sm text-gray-500 hover:text-gray-700 underline"
-        >
-          Choose a different image
-        </button>
+      {previews.length > 0 && !isProcessing && (
+        <div className="flex gap-3 items-center">
+          <button
+            onClick={handleSubmit}
+            className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm"
+          >
+            Scan {files.length === 1 ? 'Image' : `${files.length} Images`}
+          </button>
+          <button
+            onClick={() => {
+              previews.forEach((url) => URL.revokeObjectURL(url));
+              setPreviews([]);
+              setFiles([]);
+            }}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            Clear all
+          </button>
+        </div>
       )}
 
       {isProcessing && (
@@ -127,7 +170,7 @@ export default function ImageUpload({ onImageSelected, isProcessing }: ImageUplo
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
             />
           </svg>
-          <span className="font-medium">Recognizing moves...</span>
+          <span className="font-medium">{processingStatus || 'Recognizing moves...'}</span>
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ interface LegalMovesPanelProps {
   currentSan: string;
   moveLabel: string;
   sideToMove: 'w' | 'b';
+  smartSuggestions?: string[];
   onSelectMove: (san: string) => void;
 }
 
@@ -34,6 +35,7 @@ export default function LegalMovesPanel({
   currentSan,
   moveLabel,
   sideToMove,
+  smartSuggestions = [],
   onSelectMove,
 }: LegalMovesPanelProps) {
   const [pieceFilter, setPieceFilter] = useState<string | null>(null);
@@ -109,6 +111,31 @@ export default function LegalMovesPanel({
           );
         })}
       </div>
+
+      {/* Smart suggestions */}
+      {smartSuggestions.length > 0 && (
+        <div className="mb-1.5 sm:mb-2">
+          <div className="text-[10px] sm:text-xs text-amber-600 font-medium mb-1 flex items-center gap-1">
+            <span>💡</span> Suggested (based on next move)
+          </div>
+          <div className="flex flex-wrap gap-0.5 sm:gap-1">
+            {smartSuggestions.slice(0, 5).map((move) => (
+              <button
+                key={`suggestion-${move}`}
+                className={`px-1.5 sm:px-2 py-0.5 text-[11px] sm:text-xs font-mono rounded border transition-colors ${
+                  move === currentSan
+                    ? 'bg-amber-100 border-amber-400 text-amber-800 font-bold'
+                    : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:border-amber-400'
+                }`}
+                onClick={() => onSelectMove(move)}
+                title={`Suggested: ${move}`}
+              >
+                {move}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Move buttons */}
       <div className="flex flex-wrap gap-0.5 sm:gap-1 max-h-28 sm:max-h-32 overflow-y-auto">

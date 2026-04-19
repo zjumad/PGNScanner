@@ -1,6 +1,6 @@
 # PGN Scanner
 
-A web app that photographs chess score sheets and converts handwritten notation into PGN files.
+A cross-platform app that photographs chess score sheets and converts handwritten notation into PGN files. Currently targeting Web (mobile layout), with plans for desktop web, iOS, and Android.
 
 ## Features
 

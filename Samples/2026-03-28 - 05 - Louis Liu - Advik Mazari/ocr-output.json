@@ -1,0 +1,596 @@
+{
+  "header": {
+    "event": "something",
+    "date": "2026.03.28",
+    "round": "5",
+    "white": "Louis",
+    "black": "Adrik",
+    "whiteElo": "",
+    "blackElo": "",
+    "opening": "English",
+    "eco": "",
+    "result": "BLACK WON"
+  },
+  "moves": [
+    {
+      "moveNumber": 1,
+      "whiteMove": "c4",
+      "blackMove": "e5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.18,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.18,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 2,
+      "whiteMove": "Nc3",
+      "blackMove": "Nc6",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.20,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.20,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 3,
+      "whiteMove": "g3",
+      "blackMove": "Nf6",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.22,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.22,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 4,
+      "whiteMove": "Bg2",
+      "blackMove": "Bc5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.24,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.24,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 5,
+      "whiteMove": "e3",
+      "blackMove": "O-O",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.26,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.26,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 6,
+      "whiteMove": "Nge2",
+      "blackMove": "d6",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.28,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.28,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 7,
+      "whiteMove": "O-O",
+      "blackMove": "Bf5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.30,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.30,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 8,
+      "whiteMove": "d4",
+      "blackMove": "Bxd4",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.32,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.32,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 9,
+      "whiteMove": "Rxd4",
+      "blackMove": "Bb6",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.34,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.34,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 10,
+      "whiteMove": "Bf4",
+      "blackMove": "Ne7",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.36,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.36,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 11,
+      "whiteMove": "a3",
+      "blackMove": "Nf6",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.38,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.38,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 12,
+      "whiteMove": "Re1",
+      "blackMove": "Nbd7",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.40,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.40,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 13,
+      "whiteMove": "Bd2",
+      "blackMove": "Nf4",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.42,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.42,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 14,
+      "whiteMove": "Re1",
+      "blackMove": "Nxf4",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.44,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.44,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 15,
+      "whiteMove": "Nxf4",
+      "blackMove": "g5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.46,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.46,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 16,
+      "whiteMove": "Bxf4",
+      "blackMove": "gxf4",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.48,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.48,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 17,
+      "whiteMove": "Bd2",
+      "blackMove": "Bd3",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.50,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.50,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 18,
+      "whiteMove": "Bxg5",
+      "blackMove": "Qxg5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.52,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.52,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 19,
+      "whiteMove": "Qxd3",
+      "blackMove": "Qh5",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.54,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.54,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 20,
+      "whiteMove": "a3",
+      "blackMove": "Nxf2",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.56,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.56,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 21,
+      "whiteMove": "Bxf2",
+      "blackMove": "Re3",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.58,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.58,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 22,
+      "whiteMove": "Qd2",
+      "blackMove": "Rxe3",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.60,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.60,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 23,
+      "whiteMove": "Kh1",
+      "blackMove": "Rxf3",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.62,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.62,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 24,
+      "whiteMove": "Qxf3",
+      "blackMove": "Rg6",
+      "whiteConfidence": "high",
+      "blackConfidence": "medium",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.64,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.64,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 25,
+      "whiteMove": "Qf3",
+      "blackMove": "Qe5+",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.15,
+        "y": 0.66,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.25,
+        "y": 0.66,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 26,
+      "whiteMove": "Kh1",
+      "blackMove": "Qxg2",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.55,
+        "y": 0.18,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.65,
+        "y": 0.18,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 27,
+      "whiteMove": "Qe1",
+      "blackMove": "Rf8",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.55,
+        "y": 0.20,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.65,
+        "y": 0.20,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 28,
+      "whiteMove": "Rf1",
+      "blackMove": "Qf8",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.55,
+        "y": 0.22,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.65,
+        "y": 0.22,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    },
+    {
+      "moveNumber": 29,
+      "whiteMove": "Qf7",
+      "blackMove": "Qxg2#",
+      "whiteConfidence": "high",
+      "blackConfidence": "high",
+      "whiteBBox": {
+        "x": 0.55,
+        "y": 0.24,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "blackBBox": {
+        "x": 0.65,
+        "y": 0.24,
+        "width": 0.08,
+        "height": 0.02
+      },
+      "rotation": 0
+    }
+  ]
+}
