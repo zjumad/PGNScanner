@@ -611,10 +611,7 @@ export default function App() {
                       <h3 className="text-sm font-semibold text-gray-700 mb-2">Uploaded Images</h3>
                       <div className="flex flex-col gap-2">
                         {gameState.imageUrls.map((url, idx) => (
-                          <div key={idx} className="border border-gray-300 rounded overflow-hidden">
-                            <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50">Page {idx + 1}</div>
-                            <img src={url} alt={`Uploaded page ${idx + 1}`} className="w-full" />
-                          </div>
+                          <DebugImage key={idx} url={url} pageIndex={idx} />
                         ))}
                       </div>
                     </div>
@@ -664,6 +661,43 @@ function NavigationControls({
       </span>
       <button onClick={() => onNavigate('next')} className={btnClass} title="Next move">{'\u25B6'}</button>
       <button onClick={() => onNavigate('end')} className={btnClass} title="Go to end">{'\u23ED'}</button>
+    </div>
+  );
+}
+
+/** Debug image with normalized coordinate overlay on hover */
+function DebugImage({ url, pageIndex }: { url: string; pageIndex: number }) {
+  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setCoords({ x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
+  }, []);
+
+  const handleMouseLeave = useCallback(() => setCoords(null), []);
+
+  return (
+    <div className="border border-gray-300 rounded overflow-hidden">
+      <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 flex justify-between">
+        <span>Page {pageIndex + 1}</span>
+        {coords && (
+          <span className="font-mono text-blue-600">
+            x: {coords.x.toFixed(3)}, y: {coords.y.toFixed(3)}
+          </span>
+        )}
+      </div>
+      <div className="relative">
+        <img
+          src={url}
+          alt={`Uploaded page ${pageIndex + 1}`}
+          className="w-full cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
+      </div>
     </div>
   );
 }
