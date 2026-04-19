@@ -245,19 +245,43 @@ export default function App() {
     [step, handleNavigate]
   );
 
+  // When inserting, show the position and legal moves at the insert point
+  const isInserting = insertingAfterIndex !== null;
+
   // Show the position BEFORE the selected move (so legal moves match what the user sees)
   const selectedMove = gameState.selectedMoveIndex >= 0
     ? gameState.moves[gameState.selectedMoveIndex]
     : null;
 
-  const currentFen = selectedMove?.isValid
-    ? selectedMove.fenAfter
-    : selectedMove
-      ? selectedMove.fenBefore
-      : STARTING_FEN;
+  // Board position: during insert, show position after the insert point
+  const insertPointMove = isInserting && insertingAfterIndex >= 0
+    ? gameState.moves[insertingAfterIndex]
+    : null;
 
-  // Legal alternatives are from before the selected move
-  const legalMovesAtSelected = selectedMove?.legalAlternatives ?? [];
+  const currentFen = isInserting
+    ? (insertPointMove?.isValid ? insertPointMove.fenAfter : insertPointMove?.fenBefore ?? STARTING_FEN)
+    : selectedMove?.isValid
+      ? selectedMove.fenAfter
+      : selectedMove
+        ? selectedMove.fenBefore
+        : STARTING_FEN;
+
+  // Legal moves: during insert, use the insert legal moves; otherwise from selected move
+  const legalMovesAtSelected = isInserting
+    ? insertLegalMoves
+    : selectedMove?.legalAlternatives ?? [];
+
+  // Label for legal moves panel
+  const legalMovesLabel = isInserting
+    ? `Insert after ${insertingAfterIndex < 0 ? 'start' : `${insertPointMove?.moveNumber ?? '?'}${insertPointMove?.color === 'w' ? '.' : '...'}`}`
+    : selectedMove
+      ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
+      : 'Start';
+
+  // Side to move for piece filter icons
+  const legalMovesSide: 'w' | 'b' = isInserting
+    ? (insertingAfterIndex < 0 ? 'w' : (insertPointMove?.color === 'w' ? 'b' : 'w'))
+    : selectedMove?.color ?? 'w';
 
   return (
     <div
@@ -346,22 +370,30 @@ export default function App() {
                 <button onClick={() => handleNavigate('start')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to start">{'\u23EE'}</button>
                 <button onClick={() => handleNavigate('prev')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Previous move">{'\u25C0'}</button>
                 <span className="px-3 text-sm text-gray-500 font-mono min-w-[80px] text-center">
-                  {selectedMove
-                    ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
-                    : 'Start'}
+                  {isInserting
+                    ? <span className="text-green-600">Inserting...</span>
+                    : selectedMove
+                      ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
+                      : 'Start'}
                 </span>
                 <button onClick={() => handleNavigate('next')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Next move">{'\u25B6'}</button>
                 <button onClick={() => handleNavigate('end')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to end">{'\u23ED'}</button>
               </div>
 
               {/* Legal moves panel */}
-              {selectedMove && (
+              {(selectedMove || isInserting) && (
                 <LegalMovesPanel
                   legalMoves={legalMovesAtSelected}
-                  currentSan={selectedMove.san}
-                  moveLabel={`${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`}
-                  sideToMove={selectedMove.color}
-                  onSelectMove={(san) => handleCorrectMove(gameState.selectedMoveIndex, san)}
+                  currentSan={isInserting ? '' : selectedMove!.san}
+                  moveLabel={legalMovesLabel}
+                  sideToMove={legalMovesSide}
+                  onSelectMove={(san) => {
+                    if (isInserting) {
+                      handleInsertMove(insertingAfterIndex!, san);
+                    } else {
+                      handleCorrectMove(gameState.selectedMoveIndex, san);
+                    }
+                  }}
                 />
               )}
 
