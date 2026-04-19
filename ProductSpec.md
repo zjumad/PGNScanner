@@ -101,6 +101,7 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
     - This grid auto scroll when the currently focus move changes.
     - Allocate the width of the grid to 20%, 60%, 20% for White, Sheet, Black, respectively
     - The cropped image of each row should zoom into the portion of the pictures having the cells for the move.
+    - Avoid the two rotate icons on teh header of Sheet column
   - **Color-coded confidence indicators**:
     - 🟢 Green: high confidence (exact match).
     - 🟡 Yellow: medium confidence (fuzzy match, similarity ≥ 0.8).
@@ -187,6 +188,10 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - Temperature is set to 0 for deterministic output. Max output tokens: 16384.
 - No user-facing API key configuration — keys are embedded at build time.
 - The user selects the model on the upload screen; the choice is persisted in localStorage.
+- **Per-model prompt optimization**: The system prompt is split into a shared base (chess notation rules, sheet layout, response format) and model-specific grid descriptor instructions:
+  - **Gemini**: Standard grid instructions; Gemini handles spatial localization well.
+  - **GPT-4o**: Enhanced instructions with explicit anchor guidance — the grid `y` must start at the first move row (printed number "1"), NOT the header area. Includes a self-check clause and negative examples to prevent the common GPT-4o failure of including the header/event info in the grid bounding box.
+- **Grid validation**: The app validates returned grid descriptors before using them (coordinates in [0,1], nonzero dimensions, reasonable row heights, grid starts below header area). Invalid grids are rejected and fall back to per-move bounding boxes.
 
 ## Improvement Features
 

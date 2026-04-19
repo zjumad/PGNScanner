@@ -605,6 +605,21 @@ export default function App() {
               {/* Debug tab */}
               {mobileTab === 'debug' && (
                 <div className="flex flex-col gap-3">
+                  {/* Uploaded Images */}
+                  {gameState.imageUrls.length > 0 && (
+                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Uploaded Images</h3>
+                      <div className="flex flex-col gap-2">
+                        {gameState.imageUrls.map((url, idx) => (
+                          <div key={idx} className="border border-gray-300 rounded overflow-hidden">
+                            <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50">Page {idx + 1}</div>
+                            <img src={url} alt={`Uploaded page ${idx + 1}`} className="w-full" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* OCR Output */}
                   <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
                     <h3 className="text-sm font-semibold text-gray-700 mb-2">OCR Output</h3>
                     <pre className="bg-gray-900 text-green-400 text-xs font-mono p-3 rounded-lg overflow-auto max-h-[70vh] whitespace-pre-wrap break-words">

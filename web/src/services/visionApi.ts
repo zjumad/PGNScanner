@@ -10,7 +10,8 @@ export interface OcrResult {
   moves: RecognizedMove[];
 }
 
-const SYSTEM_PROMPT = `You are a chess score sheet OCR system. You read handwritten chess notation from US Chess Official Score Sheets.
+// Base prompt shared by all models — chess notation rules, sheet layout, response format
+const BASE_PROMPT = `You are a chess score sheet OCR system. You read handwritten chess notation from US Chess Official Score Sheets.
 
 SHEET LAYOUT:
 - The photo is often rotated 90° (taken sideways). Detect orientation from the printed text.
@@ -48,6 +49,18 @@ IMPORTANT:
 - Pay careful attention to similar-looking letters. When in doubt, consider which reading produces a valid chess move.
 - The result should be "1-0" for White Won, "0-1" for Black Won, "1/2-1/2" for Draw, or "*" if unclear.
 
+Confidence levels:
+- "high": clearly readable
+- "medium": somewhat unclear but best guess
+- "low": very hard to read, uncertain
+
+Do NOT include rowBBox in individual moves — the grid descriptor is used to compute row positions.
+
+Return ONLY valid JSON, no markdown code blocks or other text.`;
+
+// Gemini-specific grid instructions — Gemini handles spatial tasks well
+const GEMINI_GRID_INSTRUCTIONS = `
+
 Return your response as a JSON object with this exact structure:
 {
   "header": {
@@ -80,24 +93,74 @@ GRID DESCRIPTOR INSTRUCTIONS:
 You MUST provide a "grid" object describing the move table layout in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
 
 - "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. The coordinates below are relative to the image AS-IS (before rotation).
-- "leftHalf": Bounding box of the LEFT move grid (moves 1-30). 
+- "leftHalf": Bounding box of the LEFT move grid (moves 1-30).
   - "x": left edge of the White notation column (excluding printed move numbers)
-  - "y": top edge of row 1
+  - "y": top edge of row 1 (the FIRST move row, NOT the header area)
   - "width": width from left edge of White column to right edge of Black column
-  - "height": total height from top of row 1 to bottom of last used row
-  - "rows": number of rows in this half (typically 30)
+  - "height": total height from top of row 1 to bottom of row 30 (the full printed grid, all 30 rows)
+  - "rows": always 30 (the printed grid always has 30 rows per half)
 - "rightHalf": Same as leftHalf but for the RIGHT move grid (moves 31-60). If no moves exist in the right half, set all values to 0.
 
-The bounding boxes should cover ONLY the notation cells (White + Black columns), NOT the printed move number column.
+The bounding boxes should cover ONLY the notation cells (White + Black columns), NOT the printed move number column.`;
 
-Confidence levels:
-- "high": clearly readable
-- "medium": somewhat unclear but best guess
-- "low": very hard to read, uncertain
+// GPT-4o-specific grid instructions — needs more explicit anchoring guidance
+const GPT4O_GRID_INSTRUCTIONS = `
 
-Do NOT include rowBBox in individual moves — the grid descriptor is used to compute row positions.
+Return your response as a JSON object with this exact structure:
+{
+  "header": {
+    "event": "...",
+    "date": "YYYY.MM.DD",
+    "round": "...",
+    "white": "Player Name",
+    "black": "Player Name",
+    "whiteElo": "",
+    "blackElo": "",
+    "opening": "",
+    "eco": "",
+    "result": "1-0 | 0-1 | 1/2-1/2 | *"
+  },
+  "grid": {
+    "rotation": 0,
+    "leftHalf": { "x": 0.08, "y": 0.22, "width": 0.38, "height": 0.65, "rows": 30 },
+    "rightHalf": { "x": 0.54, "y": 0.22, "width": 0.38, "height": 0.65, "rows": 30 }
+  },
+  "moves": [
+    {
+      "moveNumber": 1,
+      "whiteMove": "e4", "blackMove": "e5",
+      "whiteConfidence": "high", "blackConfidence": "high"
+    }
+  ]
+}
 
-Return ONLY valid JSON, no markdown code blocks or other text.`;
+GRID DESCRIPTOR INSTRUCTIONS — READ CAREFULLY:
+You MUST provide a "grid" object locating the move table in the image. All coordinates are NORMALIZED fractions (0.0 to 1.0) relative to the ORIGINAL image dimensions, where (0,0) = top-left and (1,1) = bottom-right.
+
+CRITICAL — How to find the correct "y" (top edge):
+1. Find the printed number "1" in the left move grid — this is the FIRST move row.
+2. The "y" value must be the TOP EDGE of that row (row 1), where the printed "1" appears.
+3. The header area (Event, Date, Round, White, Black, etc.) is ABOVE the move grid. DO NOT include it.
+4. Common mistake: DO NOT set "y" to the top of the entire table or the header section. It must start at the first MOVE row.
+
+SELF-CHECK before returning: Verify that leftHalf.y points to the row containing the printed number "1" (first move), NOT to the Event/Date/Player header fields above it.
+
+Field definitions:
+- "rotation": The clockwise rotation angle (0, 90, 180, or 270) needed to orient the sheet upright. 0 means text is already upright. Coordinates are relative to the image AS-IS (before rotation).
+- "leftHalf": Bounding box of the LEFT move grid (moves 1-30).
+  - "x": left edge of the White notation column (EXCLUDE the printed move number column on the left)
+  - "y": top edge of ROW 1 — the first row with a printed move number "1". NOT the header. NOT the column labels.
+  - "width": from left edge of White column to right edge of Black column
+  - "height": from top of row 1 to bottom of row 30 — cover ALL 30 printed rows, even if some are empty
+  - "rows": always 30 (the printed grid has exactly 30 rows per half, regardless of how many moves were played)
+- "rightHalf": Same structure for the RIGHT move grid (moves 31-60). If unused, set all numeric values to 0.
+
+The bounding boxes must cover ONLY the handwritten notation cells (White + Black columns), NOT the printed move number column.`;
+
+function getSystemPrompt(provider: ApiProvider): string {
+  const gridInstructions = provider === 'gemini' ? GEMINI_GRID_INSTRUCTIONS : GPT4O_GRID_INSTRUCTIONS;
+  return BASE_PROMPT + gridInstructions;
+}
 
 function parseOcrResponse(content: string): OcrResult {
   let jsonStr = content.trim();
@@ -169,7 +232,32 @@ function parseGridDescriptor(raw: unknown): GridDescriptor | undefined {
   if (!leftHalf) return undefined;
   const rightHalf = parseHalf(g.rightHalf) || { x: 0, y: 0, width: 0, height: 0, rows: 30 };
 
+  // Sanity checks — reject obviously bad grids
+  if (!validateGridHalf(leftHalf)) return undefined;
+  if (rightHalf.width > 0 && !validateGridHalf(rightHalf)) {
+    // Right half is bad but left is ok — zero out right half
+    return { rotation, leftHalf, rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: 30 } };
+  }
+
   return { rotation, leftHalf, rightHalf };
+}
+
+/** Validate a grid half has reasonable normalized values */
+function validateGridHalf(half: GridHalf): boolean {
+  // All coordinates must be in [0, 1]
+  if (half.x < 0 || half.x > 1 || half.y < 0 || half.y > 1) return false;
+  if (half.width <= 0 || half.width > 1 || half.height <= 0 || half.height > 1) return false;
+  // Box must not extend beyond image
+  if (half.x + half.width > 1.05 || half.y + half.height > 1.05) return false;
+  // Grid y should not start too close to top (header is above moves)
+  // A score sheet typically has the move grid starting at ~10-25% from top
+  if (half.y < 0.05) return false;
+  // Row height must be reasonable (not too tiny or too large)
+  const rowHeight = half.height / half.rows;
+  if (rowHeight < 0.005 || rowHeight > 0.1) return false;
+  // Rows must be a sensible count
+  if (half.rows < 1 || half.rows > 60) return false;
+  return true;
 }
 
 function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
@@ -359,7 +447,7 @@ async function recognizeWithGemini(
         contents: [
           {
             parts: [
-              { text: SYSTEM_PROMPT + '\n\nPlease read this chess score sheet and return the moves as JSON.' },
+              { text: getSystemPrompt('gemini') + '\n\nPlease read this chess score sheet and return the moves as JSON.' },
               {
                 inline_data: {
                   mime_type: imageType,
@@ -407,7 +495,7 @@ async function recognizeWithGitHub(
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt('github') },
         {
           role: 'user',
           content: [
