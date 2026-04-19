@@ -54,9 +54,15 @@ export default function MoveList({
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to center the selected move in the 3-move window
+  // Auto-scroll selected move to center within the list container only (avoids iOS whole-page scroll)
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const container = listRef.current;
+    const selected = selectedRef.current;
+    if (!container || !selected) return;
+    const containerRect = container.getBoundingClientRect();
+    const selectedRect = selected.getBoundingClientRect();
+    const offset = selectedRect.top - containerRect.top - (containerRect.height - selectedRect.height) / 2;
+    container.scrollBy({ top: offset, behavior: 'smooth' });
   }, [selectedIndex]);
 
   const hasImages = imageUrls && imageUrls.length > 0;

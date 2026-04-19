@@ -203,15 +203,22 @@ export default function PerspectiveEditor({
             <div
               key={i}
               onPointerDown={handlePointerDown(i)}
-              className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border-2 border-white shadow-lg cursor-grab active:cursor-grabbing flex items-center justify-center text-[9px] font-bold text-white"
+              className="absolute -ml-6 -mt-6 cursor-grab active:cursor-grabbing flex items-center justify-center"
               style={{
+                width: '48px',
+                height: '48px',
                 left: `${left}%`,
                 top: `${top}%`,
-                backgroundColor: cornerColors[i],
                 zIndex: draggingIndex === i ? 20 : 10,
               }}
             >
-              {cornerLabels[i]}
+              {/* Visual handle (smaller circle inside the touch target) */}
+              <div
+                className="w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[9px] font-bold text-white pointer-events-none"
+                style={{ backgroundColor: cornerColors[i] }}
+              >
+                {cornerLabels[i]}
+              </div>
             </div>
           );
         })}
