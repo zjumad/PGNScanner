@@ -680,7 +680,7 @@ function NavigationControls({
   );
 }
 
-/** Debug image with grid overlay, coordinate display, and click-to-calibrate */
+/** Debug image with interactive grid overlay, coordinate display, and grid controls */
 function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
   url: string;
   pageIndex: number;
@@ -690,9 +690,13 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
   const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
   const [calibrating, setCalibrating] = useState(false);
   const [anchor1, setAnchor1] = useState<{ x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const getNormalizedCoords = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    const el = e.currentTarget.closest('.debug-image-container') as HTMLElement;
+  // Number of visible grids (1 or 2)
+  const gridCount = grid && grid.rightHalf.width > 0 ? 2 : 1;
+
+  const getNormalizedCoords = useCallback((e: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement>) => {
+    const el = containerRef.current;
     if (!el) return { x: 0, y: 0 };
     const img = el.querySelector('img') as HTMLElement;
     if (!img) return { x: 0, y: 0 };
@@ -715,7 +719,6 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
     if (!anchor1) {
       setAnchor1(pt);
     } else {
-      // Two points define the left half grid: anchor1 = top-left of row 1, pt = bottom-right of row 30
       const topLeft = { x: Math.min(anchor1.x, pt.x), y: Math.min(anchor1.y, pt.y) };
       const bottomRight = { x: Math.max(anchor1.x, pt.x), y: Math.max(anchor1.y, pt.y) };
       const newGrid: GridDescriptor = {
@@ -745,8 +748,58 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
     setAnchor1(null);
   }, []);
 
+  // Update grid count
+  const setGridCount = useCallback((count: number) => {
+    if (!grid) return;
+    if (count === 1) {
+      onGridCalibrate({
+        ...grid,
+        rightHalf: { x: 0, y: 0, width: 0, height: 0, rows: grid.leftHalf.rows },
+      });
+    } else if (count === 2 && grid.rightHalf.width === 0) {
+      // Create a sensible default right half: same height, placed to the right
+      onGridCalibrate({
+        ...grid,
+        rightHalf: {
+          x: grid.leftHalf.x + grid.leftHalf.width + 0.05,
+          y: grid.leftHalf.y,
+          width: grid.leftHalf.width,
+          height: grid.leftHalf.height,
+          rows: grid.leftHalf.rows,
+        },
+      });
+    }
+  }, [grid, onGridCalibrate]);
+
+  // Update rows for a half
+  const setHalfRows = useCallback((half: 'left' | 'right', rows: number) => {
+    if (!grid) return;
+    const clamped = Math.max(1, Math.min(60, rows));
+    if (half === 'left') {
+      onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, rows: clamped } });
+    } else {
+      onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, rows: clamped } });
+    }
+  }, [grid, onGridCalibrate]);
+
+  // Commit a rectangle update from drag/resize
+  const handleRectUpdate = useCallback((half: 'left' | 'right', updated: { x: number; y: number; width: number; height: number }) => {
+    if (!grid) return;
+    const clamped = {
+      x: Math.max(0, Math.min(1, updated.x)),
+      y: Math.max(0, Math.min(1, updated.y)),
+      width: Math.max(0.02, Math.min(1, updated.width)),
+      height: Math.max(0.02, Math.min(1, updated.height)),
+    };
+    if (half === 'left') {
+      onGridCalibrate({ ...grid, leftHalf: { ...grid.leftHalf, ...clamped } });
+    } else {
+      onGridCalibrate({ ...grid, rightHalf: { ...grid.rightHalf, ...clamped } });
+    }
+  }, [grid, onGridCalibrate]);
+
   return (
-    <div className="border border-gray-300 rounded overflow-hidden debug-image-container">
+    <div className="border border-gray-300 rounded overflow-hidden">
       <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 flex justify-between items-center">
         <span>Page {pageIndex + 1}</span>
         <div className="flex items-center gap-2">
@@ -769,44 +822,73 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
           )}
         </div>
       </div>
-      <div className="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
+      {/* Grid controls */}
+      {grid && (
+        <div className="px-2 py-1.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center gap-3 text-xs">
+          <label className="flex items-center gap-1">
+            <span className="text-gray-600"># Grids:</span>
+            <select
+              value={gridCount}
+              onChange={(e) => setGridCount(Number(e.target.value))}
+              className="border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white"
+            >
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1">
+            <span className="text-red-600">Grid 1 rows:</span>
+            <input
+              type="number"
+              value={grid.leftHalf.rows}
+              onChange={(e) => setHalfRows('left', Number(e.target.value))}
+              min={1}
+              max={60}
+              className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-14 bg-white"
+            />
+          </label>
+          {gridCount === 2 && (
+            <label className="flex items-center gap-1">
+              <span className="text-blue-600">Grid 2 rows:</span>
+              <input
+                type="number"
+                value={grid.rightHalf.rows}
+                onChange={(e) => setHalfRows('right', Number(e.target.value))}
+                min={1}
+                max={60}
+                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-14 bg-white"
+              />
+            </label>
+          )}
+        </div>
+      )}
+      <div ref={containerRef} className="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
         <img
           src={url}
           alt={`Uploaded page ${pageIndex + 1}`}
           className={`w-full ${calibrating ? 'cursor-crosshair' : 'cursor-crosshair'}`}
+          draggable={false}
         />
-        {/* Grid overlay */}
+        {/* Interactive grid overlays */}
         {grid && grid.leftHalf.width > 0 && (
-          <div
-            className="absolute border-2 border-red-500 pointer-events-none"
-            style={{
-              left: `${grid.leftHalf.x * 100}%`,
-              top: `${grid.leftHalf.y * 100}%`,
-              width: `${grid.leftHalf.width * 100}%`,
-              height: `${grid.leftHalf.height * 100}%`,
-              opacity: 0.7,
-            }}
-          >
-            <span className="absolute -top-4 left-0 text-[10px] text-red-600 bg-white/80 px-1 rounded">
-              Left Grid (1-{grid.leftHalf.rows})
-            </span>
-          </div>
+          <DraggableRect
+            half={grid.leftHalf}
+            color="red"
+            label={`Grid 1 (1-${grid.leftHalf.rows})`}
+            containerRef={containerRef}
+            onUpdate={(rect) => handleRectUpdate('left', rect)}
+            disabled={calibrating}
+          />
         )}
         {grid && grid.rightHalf.width > 0 && (
-          <div
-            className="absolute border-2 border-blue-500 pointer-events-none"
-            style={{
-              left: `${grid.rightHalf.x * 100}%`,
-              top: `${grid.rightHalf.y * 100}%`,
-              width: `${grid.rightHalf.width * 100}%`,
-              height: `${grid.rightHalf.height * 100}%`,
-              opacity: 0.7,
-            }}
-          >
-            <span className="absolute -top-4 left-0 text-[10px] text-blue-600 bg-white/80 px-1 rounded">
-              Right Grid ({grid.leftHalf.rows + 1}-{grid.leftHalf.rows + grid.rightHalf.rows})
-            </span>
-          </div>
+          <DraggableRect
+            half={grid.rightHalf}
+            color="blue"
+            label={`Grid 2 (${grid.leftHalf.rows + 1}-${grid.leftHalf.rows + grid.rightHalf.rows})`}
+            containerRef={containerRef}
+            onUpdate={(rect) => handleRectUpdate('right', rect)}
+            disabled={calibrating}
+          />
         )}
         {/* Calibration anchor point */}
         {calibrating && anchor1 && (
@@ -816,6 +898,165 @@ function DebugImage({ url, pageIndex, grid, onGridCalibrate }: {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+/** Draggable and resizable rectangle overlay for grid halves */
+function DraggableRect({ half, color, label, containerRef, onUpdate, disabled }: {
+  half: { x: number; y: number; width: number; height: number };
+  color: 'red' | 'blue';
+  label: string;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onUpdate: (rect: { x: number; y: number; width: number; height: number }) => void;
+  disabled?: boolean;
+}) {
+  const [dragState, setDragState] = useState<{
+    type: 'move' | 'resize';
+    edge?: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+    startX: number;
+    startY: number;
+    origRect: { x: number; y: number; width: number; height: number };
+  } | null>(null);
+  const [localRect, setLocalRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  // Use the localRect during drag, otherwise the committed half
+  const rect = localRect || half;
+  const EDGE_PX = 8;
+
+  const getImgRect = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return null;
+    const img = el.querySelector('img');
+    return img?.getBoundingClientRect() || null;
+  }, [containerRef]);
+
+  const detectEdge = useCallback((e: React.PointerEvent<HTMLDivElement>): string | null => {
+    const el = e.currentTarget;
+    const br = el.getBoundingClientRect();
+    const x = e.clientX - br.left;
+    const y = e.clientY - br.top;
+    const w = br.width;
+    const h = br.height;
+    const nearL = x < EDGE_PX;
+    const nearR = x > w - EDGE_PX;
+    const nearT = y < EDGE_PX;
+    const nearB = y > h - EDGE_PX;
+    if (nearT && nearL) return 'nw';
+    if (nearT && nearR) return 'ne';
+    if (nearB && nearL) return 'sw';
+    if (nearB && nearR) return 'se';
+    if (nearT) return 'n';
+    if (nearB) return 's';
+    if (nearL) return 'w';
+    if (nearR) return 'e';
+    return null;
+  }, []);
+
+  const getCursorForEdge = (edge: string | null): string => {
+    if (!edge) return 'move';
+    const map: Record<string, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+    return map[edge] || 'move';
+  };
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const edge = detectEdge(e);
+    setDragState({
+      type: edge ? 'resize' : 'move',
+      edge: edge as typeof dragState extends null ? never : NonNullable<typeof dragState>['edge'],
+      startX: e.clientX,
+      startY: e.clientY,
+      origRect: { x: half.x, y: half.y, width: half.width, height: half.height },
+    });
+    setLocalRect({ x: half.x, y: half.y, width: half.width, height: half.height });
+  }, [disabled, half, detectEdge]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState) {
+      // Just update cursor based on edge proximity
+      if (!disabled) {
+        const edge = detectEdge(e);
+        (e.currentTarget as HTMLElement).style.cursor = getCursorForEdge(edge);
+      }
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const imgRect = getImgRect();
+    if (!imgRect) return;
+    const dx = (e.clientX - dragState.startX) / imgRect.width;
+    const dy = (e.clientY - dragState.startY) / imgRect.height;
+    const orig = dragState.origRect;
+    let { x, y, width, height } = orig;
+
+    if (dragState.type === 'move') {
+      x = orig.x + dx;
+      y = orig.y + dy;
+    } else {
+      const edge = dragState.edge || '';
+      if (edge.includes('w')) { x = orig.x + dx; width = orig.width - dx; }
+      if (edge.includes('e')) { width = orig.width + dx; }
+      if (edge.includes('n')) { y = orig.y + dy; height = orig.height - dy; }
+      if (edge.includes('s')) { height = orig.height + dy; }
+    }
+
+    // Clamp to valid range
+    width = Math.max(0.02, width);
+    height = Math.max(0.02, height);
+    x = Math.max(0, Math.min(1 - width, x));
+    y = Math.max(0, Math.min(1 - height, y));
+
+    setLocalRect({ x, y, width, height });
+  }, [dragState, getImgRect, detectEdge, disabled]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    if (localRect) {
+      onUpdate(localRect);
+    }
+    setDragState(null);
+    setLocalRect(null);
+  }, [dragState, localRect, onUpdate]);
+
+  const borderColor = color === 'red' ? 'border-red-500' : 'border-blue-500';
+  const bgColor = color === 'red' ? 'bg-red-500/10' : 'bg-blue-500/10';
+  const textColor = color === 'red' ? 'text-red-600' : 'text-blue-600';
+
+  return (
+    <div
+      className={`absolute border-2 ${borderColor} ${bgColor} ${disabled ? 'pointer-events-none' : ''}`}
+      style={{
+        left: `${rect.x * 100}%`,
+        top: `${rect.y * 100}%`,
+        width: `${rect.width * 100}%`,
+        height: `${rect.height * 100}%`,
+        opacity: 0.7,
+        cursor: disabled ? 'default' : 'move',
+        touchAction: 'none',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      <span className={`absolute -top-4 left-0 text-[10px] ${textColor} bg-white/80 px-1 rounded pointer-events-none`}>
+        {label}
+      </span>
+      {/* Resize handles at corners */}
+      {!disabled && (
+        <>
+          <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-white border border-gray-500 cursor-nwse-resize pointer-events-none" />
+          <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-white border border-gray-500 cursor-nesw-resize pointer-events-none" />
+          <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-white border border-gray-500 cursor-nesw-resize pointer-events-none" />
+          <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-white border border-gray-500 cursor-nwse-resize pointer-events-none" />
+        </>
+      )}
     </div>
   );
 }

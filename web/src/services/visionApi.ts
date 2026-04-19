@@ -305,6 +305,12 @@ function validateGridHalf(half: GridHalf): boolean {
 }
 
 export function computeRowBBox(moveNumber: number, grid: GridDescriptor): { bbox: import('../types').CellBoundingBox; rotation: 0 | 90 | 180 | 270 } {
+  const totalRows = grid.leftHalf.rows + (grid.rightHalf.width > 0 ? grid.rightHalf.rows : 0);
+  // Guard: if move is beyond total grid capacity, return a zero bbox
+  if (moveNumber > totalRows || moveNumber < 1) {
+    return { bbox: { x: 0, y: 0, width: 0, height: 0 }, rotation: grid.rotation };
+  }
+
   const half = moveNumber <= grid.leftHalf.rows ? grid.leftHalf : grid.rightHalf;
   const rowIndex = moveNumber <= grid.leftHalf.rows
     ? moveNumber - 1
