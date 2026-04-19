@@ -273,7 +273,7 @@ export default function App() {
     const whitePart = gameState.header.white || 'White';
     const blackPart = gameState.header.black || 'Black';
     a.href = url;
-    a.download = `${datePart} - ${gameState.header.round || 'R'} - ${whitePart} - ${blackPart}.pgn`;
+    a.download = `${datePart} - ${gameState.header.round || 'R'} - ${whitePart} vs ${blackPart}.pgn`;
     a.click();
     URL.revokeObjectURL(url);
   }, [gameState]);

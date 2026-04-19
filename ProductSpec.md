@@ -175,13 +175,14 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 
 ### Step 4: Export
 Users is able to export the result as PGN files. 
+The file name patttern will be something like the PGN file names under /Samples folder. By "[yyyy]-[MM]-[dd] - [round] - [White_player] vs [black_player].pgn".
 
 ## PGN Export
 
 - The exported PGN includes standard header tags (Event, Date, Round, White, Black, Result, and optionally WhiteElo, BlackElo, Opening, ECO).
 - Only valid moves are included in the move text.
 - Forced/uncertain matches are annotated with comments: `{uncertain: OCR read "raw text"}`.
-- The download filename follows the pattern: `{Date} - {Round} - {White} - {Black}.pgn`.
+- The download filename follows the pattern: `{Date} - {Round} - {White} vs {Black}.pgn`.
 
 ## OCR Export
 
