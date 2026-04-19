@@ -87,7 +87,7 @@ This means the OCR model no longer needs to detect or report rotation — all gr
 
 After uploading and before scanning, the user should be able to manually adjust images:
 
-- **Rotate**: Buttons to rotate the image 90° clockwise or counter-clockwise. This applies a real rotation to the image data (not just CSS), so the OCR model and UI both see the rotated version.
+- **Rotate**: A rotation control allowing 1° incremental adjustments (e.g., a slider or +/− buttons). This applies a real rotation to the image data (not just CSS), so the OCR model and UI both see the rotated version. Useful for slightly tilted photos that aren't perfectly aligned.
 - **Crop**: The user can drag to select a rectangular region of the image to crop to. This is useful when:
   - The photo includes extra background beyond the score sheet
   - Only one side of a 2-sided sheet is visible and needs trimming
