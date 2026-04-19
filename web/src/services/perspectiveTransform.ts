@@ -146,20 +146,27 @@ export function isValidQuad(corners: Point2D[]): boolean {
   if (corners.length !== 4) return false;
 
   // Check convexity via cross products — all should have the same sign
+  let positiveCount = 0;
+  let negativeCount = 0;
   for (let i = 0; i < 4; i++) {
     const a = corners[i];
     const b = corners[(i + 1) % 4];
     const c = corners[(i + 2) % 4];
     const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-    if (cross >= 0) return false; // Expect all negative (clockwise winding for TL→TR→BR→BL)
+    if (cross > 0) positiveCount++;
+    else if (cross < 0) negativeCount++;
   }
+  // All cross products must have the same sign (convex quad)
+  if (positiveCount > 0 && negativeCount > 0) return false;
+  // At least some non-zero cross products (not degenerate/collinear)
+  if (positiveCount === 0 && negativeCount === 0) return false;
 
   // Check minimum area (at least 1% of bounding box)
   const xs = corners.map(p => p.x);
   const ys = corners.map(p => p.y);
   const bboxArea = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
   const quadArea = Math.abs(shoelaceArea(corners));
-  if (quadArea < bboxArea * 0.01) return false;
+  if (bboxArea > 0 && quadArea < bboxArea * 0.01) return false;
 
   return true;
 }
