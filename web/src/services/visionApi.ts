@@ -554,36 +554,48 @@ async function recognizeWithGitHub(
   modelId: ModelId
 ): Promise<OcrResult> {
   const model = getModelOption(modelId);
+
+  // Build model-specific request body
+  const messages = [
+    { role: 'system', content: getSystemPrompt(modelId) },
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: 'Please read this chess score sheet and return the moves as JSON.',
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:${imageType};base64,${imageBase64}`,
+            detail: 'high',
+          },
+        },
+      ],
+    },
+  ];
+
+  const body: Record<string, unknown> = {
+    model: model.apiModelId,
+    messages,
+  };
+
+  // GPT-5 family uses max_completion_tokens; older models use max_tokens
+  if (modelId === 'gpt-5' || modelId === 'gpt-5-mini') {
+    body.max_completion_tokens = 32768;
+  } else {
+    body.max_tokens = 16384;
+    body.temperature = 0;
+  }
+
   const response = await fetch('https://models.github.ai/inference/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      model: model.apiModelId,
-      messages: [
-        { role: 'system', content: getSystemPrompt(modelId) },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Please read this chess score sheet and return the moves as JSON.',
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${imageType};base64,${imageBase64}`,
-                detail: 'high',
-              },
-            },
-          ],
-        },
-      ],
-      max_tokens: 32768,
-      temperature: 0,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
