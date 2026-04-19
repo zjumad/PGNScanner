@@ -71,6 +71,7 @@ The app follows this workflow:
 - For **2-sided score sheets**, users can add both pages before scanning. Each page is previewed with a page number badge.
 - Supported image formats: JPG, PNG, WEBP (any `image/*` type).
 - A preview of the selected image(s) is shown before processing begins. Users click "Scan" to start processing.
+- **Demo mode**: A "Demo with a sample image" button is shown below the drop zone (when no images are selected). Clicking it loads a built-in sample score sheet image (from the Samples folder) and proceeds to the next step, allowing users to try the app without uploading their own photo.
 
 #### Image Preprocessing (automatic)
 

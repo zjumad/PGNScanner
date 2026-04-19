@@ -49,6 +49,13 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
     if (files.length > 0) onImagesSelected(files, modelId);
   }, [files, onImagesSelected, modelId]);
 
+  const handleDemo = useCallback(async () => {
+    const response = await fetch(`${import.meta.env.BASE_URL}samples/demo.jpg`);
+    const blob = await response.blob();
+    const file = new File([blob], 'demo-scoresheet.jpg', { type: 'image/jpeg' });
+    addFiles([file]);
+  }, [addFiles]);
+
   return (
     <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto px-2">
       <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Upload Score Sheet Photo</h2>
@@ -132,6 +139,16 @@ export default function ImageUpload({ onImagesSelected, isProcessing, processing
           }}
         />
       </div>
+
+      {/* Demo button — shown when no images selected */}
+      {previews.length === 0 && !isProcessing && (
+        <button
+          onClick={handleDemo}
+          className="text-sm text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
+        >
+          Demo with a sample image
+        </button>
+      )}
 
       {previews.length > 0 && !isProcessing && (
         <div className="flex flex-col gap-3 items-center w-full max-w-xs">
