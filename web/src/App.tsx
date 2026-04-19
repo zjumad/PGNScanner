@@ -35,6 +35,7 @@ export default function App() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [rawOcrJson, setRawOcrJson] = useState<string>('');
   const [ocrGrid, setOcrGrid] = useState<GridDescriptor | null>(null);
+  const [boardFlipped, setBoardFlipped] = useState(false);
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
@@ -532,12 +533,14 @@ export default function App() {
                       interactive={(selectedMove !== null && !isSpeculativeSelected) || isInserting}
                       legalMoves={legalMovesAtSelected}
                       onMoveMade={handleBoardMove}
+                      orientation={boardFlipped ? 'black' : 'white'}
                     />
                   </div>
                   <NavigationControls
                     isInserting={isInserting}
                     selectedMove={selectedMove}
                     onNavigate={handleNavigate}
+                    onFlipBoard={() => setBoardFlipped(f => !f)}
                     compact
                   />
                   {(selectedMove || isInserting) && !isSpeculativeSelected && (
@@ -653,11 +656,13 @@ function NavigationControls({
   isInserting,
   selectedMove,
   onNavigate,
+  onFlipBoard,
   compact,
 }: {
   isInserting: boolean;
   selectedMove: import('./types').ValidatedMove | null;
   onNavigate: (dir: 'prev' | 'next' | 'start' | 'end') => void;
+  onFlipBoard?: () => void;
   compact?: boolean;
 }) {
   const btnClass = compact
@@ -676,6 +681,9 @@ function NavigationControls({
       </span>
       <button onClick={() => onNavigate('next')} className={btnClass} title="Next move">{'\u25B6'}</button>
       <button onClick={() => onNavigate('end')} className={btnClass} title="Go to end">{'\u23ED'}</button>
+      {onFlipBoard && (
+        <button onClick={onFlipBoard} className={btnClass} title="Flip board">🔄</button>
+      )}
     </div>
   );
 }
