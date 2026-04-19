@@ -101,7 +101,8 @@ export interface MatchResult {
  */
 export function matchMoveToLegal(
   rawText: string,
-  legalMoves: string[]
+  legalMoves: string[],
+  forceMatch: boolean = false
 ): MatchResult | null {
   if (!rawText || rawText.trim() === '' || legalMoves.length === 0) return null;
 
@@ -134,6 +135,10 @@ export function matchMoveToLegal(
   if (bestScore >= 0.5) {
     return { bestMove, confidence: 'low', score: bestScore };
   }
+  // Force-match: return best legal move even below threshold
+  if (forceMatch && bestMove) {
+    return { bestMove, confidence: 'low', score: bestScore };
+  }
   return null;
 }
 
@@ -152,9 +157,15 @@ export function validateMoveSequence(
     if (move.white && move.white.trim() !== '') {
       const fenBefore = chess.fen();
       const legalMoves = chess.moves();
-      const match = matchMoveToLegal(move.white, legalMoves);
+
+      if (legalMoves.length === 0) break; // Game is over
+
+      const match = matchMoveToLegal(move.white, legalMoves, true);
 
       if (match) {
+        const isExact = match.score >= 0.95;
+        const isFuzzy = !isExact && match.score >= 0.5;
+        const isForced = !isExact && !isFuzzy;
         try {
           chess.move(match.bestMove);
           validated.push({
@@ -163,32 +174,37 @@ export function validateMoveSequence(
             san: match.bestMove,
             rawOcr: move.white,
             confidence: match.confidence,
+            matchType: isForced ? 'forced' : isFuzzy ? 'fuzzy' : 'exact',
             isValid: true,
             legalAlternatives: legalMoves,
             fenAfter: chess.fen(),
             fenBefore,
           });
         } catch {
+          // Shouldn't happen since we matched against legal moves, but be defensive
           validated.push({
             moveNumber: move.moveNumber,
             color: 'w',
             san: move.white,
             rawOcr: move.white,
             confidence: 'low',
+            matchType: 'forced',
             isValid: false,
             legalAlternatives: legalMoves,
             fenAfter: fenBefore,
             fenBefore,
           });
-          break; // Can't continue if move is invalid
+          break;
         }
       } else {
+        // No match at all (empty OCR or no legal moves) — mark invalid, can't continue
         validated.push({
           moveNumber: move.moveNumber,
           color: 'w',
           san: move.white,
           rawOcr: move.white,
           confidence: 'low',
+          matchType: 'forced',
           isValid: false,
           legalAlternatives: legalMoves,
           fenAfter: fenBefore,
@@ -202,9 +218,15 @@ export function validateMoveSequence(
     if (move.black && move.black.trim() !== '') {
       const fenBefore = chess.fen();
       const legalMoves = chess.moves();
-      const match = matchMoveToLegal(move.black, legalMoves);
+
+      if (legalMoves.length === 0) break; // Game is over
+
+      const match = matchMoveToLegal(move.black, legalMoves, true);
 
       if (match) {
+        const isExact = match.score >= 0.95;
+        const isFuzzy = !isExact && match.score >= 0.5;
+        const isForced = !isExact && !isFuzzy;
         try {
           chess.move(match.bestMove);
           validated.push({
@@ -213,6 +235,7 @@ export function validateMoveSequence(
             san: match.bestMove,
             rawOcr: move.black,
             confidence: match.confidence,
+            matchType: isForced ? 'forced' : isFuzzy ? 'fuzzy' : 'exact',
             isValid: true,
             legalAlternatives: legalMoves,
             fenAfter: chess.fen(),
@@ -225,6 +248,7 @@ export function validateMoveSequence(
             san: move.black,
             rawOcr: move.black,
             confidence: 'low',
+            matchType: 'forced',
             isValid: false,
             legalAlternatives: legalMoves,
             fenAfter: fenBefore,
@@ -239,6 +263,7 @@ export function validateMoveSequence(
           san: move.black,
           rawOcr: move.black,
           confidence: 'low',
+          matchType: 'forced',
           isValid: false,
           legalAlternatives: legalMoves,
           fenAfter: fenBefore,
@@ -254,35 +279,43 @@ export function validateMoveSequence(
 
 /**
  * Re-validate moves from a given index forward after a correction.
- * Replays the game from the start, applying the corrected move at the given index.
+ * Uses rawOcr for all moves except the corrected one, preserving original OCR data.
  */
 export function revalidateFromIndex(
   currentMoves: import('../types').ValidatedMove[],
   correctionIndex: number,
   newSan: string
 ): import('../types').ValidatedMove[] {
-  // Rebuild move list as raw pairs
+  // Rebuild move list as raw pairs, using rawOcr to preserve original text
   const rawMoves: { moveNumber: number; white: string; black: string }[] = [];
   let currentPair: { moveNumber: number; white: string; black: string } | null = null;
 
   for (let i = 0; i < currentMoves.length; i++) {
     const m = currentMoves[i];
-    const san = i === correctionIndex ? newSan : m.san;
+    // Use the corrected SAN at the correction index, rawOcr everywhere else
+    const text = i === correctionIndex ? newSan : (m.rawOcr || m.san);
 
     if (m.color === 'w') {
       if (currentPair) rawMoves.push(currentPair);
-      currentPair = { moveNumber: m.moveNumber, white: san, black: '' };
+      currentPair = { moveNumber: m.moveNumber, white: text, black: '' };
     } else {
       if (!currentPair) {
-        currentPair = { moveNumber: m.moveNumber, white: '', black: san };
+        currentPair = { moveNumber: m.moveNumber, white: '', black: text };
       } else {
-        currentPair.black = san;
+        currentPair.black = text;
       }
     }
   }
   if (currentPair) rawMoves.push(currentPair);
 
-  return validateMoveSequence(rawMoves);
+  const result = validateMoveSequence(rawMoves);
+
+  // Mark the corrected move
+  if (correctionIndex < result.length) {
+    result[correctionIndex].matchType = 'corrected';
+  }
+
+  return result;
 }
 
 /**
@@ -309,6 +342,7 @@ export function getLegalMovesAtPosition(
 
 /**
  * Generate PGN string from validated moves and header.
+ * Forced guesses are annotated with comments.
  */
 export function generatePgn(
   header: import('../types').GameHeader,
@@ -336,6 +370,9 @@ export function generatePgn(
       moveText += `${move.moveNumber}. ${move.san} `;
     } else {
       moveText += `${move.san} `;
+    }
+    if (move.matchType === 'forced') {
+      moveText += `{uncertain: OCR read "${move.rawOcr || '?'}"} `;
     }
   }
 

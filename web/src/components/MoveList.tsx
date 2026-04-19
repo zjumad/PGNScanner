@@ -26,6 +26,8 @@ export default function MoveList({
 
   const confidenceColor = (move: ValidatedMove) => {
     if (!move.isValid) return 'bg-red-100 text-red-800 border-red-300';
+    if (move.matchType === 'forced') return 'bg-orange-100 text-orange-800 border-orange-300';
+    if (move.matchType === 'corrected') return 'bg-blue-50 text-blue-800 border-blue-200';
     switch (move.confidence) {
       case 'high':
         return 'bg-green-50 text-green-800 border-green-200';
@@ -38,6 +40,8 @@ export default function MoveList({
 
   const confidenceDot = (move: ValidatedMove) => {
     if (!move.isValid) return 'bg-red-500';
+    if (move.matchType === 'forced') return 'bg-orange-500';
+    if (move.matchType === 'corrected') return 'bg-blue-500';
     switch (move.confidence) {
       case 'high':
         return 'bg-green-500';
@@ -74,11 +78,20 @@ export default function MoveList({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-gray-200 font-semibold text-gray-700 flex items-center justify-between">
-        <span>Moves</span>
-        <span className="text-xs text-gray-400 font-normal">
-          {moves.filter((m) => m.isValid).length} / {moves.length} valid
-        </span>
+      <div className="px-4 py-3 border-b border-gray-200 font-semibold text-gray-700 flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span>Moves</span>
+          <span className="text-xs text-gray-400 font-normal">
+            {moves.filter((m) => m.isValid).length} / {moves.length} valid
+          </span>
+        </div>
+        <div className="flex gap-3 text-[10px] text-gray-400 font-normal">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />exact</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />fuzzy</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />guess</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />corrected</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />invalid</span>
+        </div>
       </div>
 
       <div ref={listRef} className="overflow-y-auto flex-1 min-h-0">
@@ -255,9 +268,13 @@ function MoveCell({
       onClick={onSelect}
       onDoubleClick={onStartEdit}
       title={
-        move.rawOcr && move.rawOcr !== move.san
-          ? `OCR: "${move.rawOcr}" → ${move.san}`
-          : `Click to select, double-click to edit`
+        move.matchType === 'forced'
+          ? `⚠ Forced guess from OCR: "${move.rawOcr}"`
+          : move.matchType === 'corrected'
+            ? `✓ Manually corrected${move.rawOcr ? ` (OCR: "${move.rawOcr}")` : ''}`
+            : move.rawOcr && move.rawOcr !== move.san
+              ? `OCR: "${move.rawOcr}" → ${move.san}`
+              : `Click to select, double-click to edit`
       }
     >
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${confidenceDot}`} />

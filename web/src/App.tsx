@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import type { AppStep, GameHeader, GameState } from './types';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { AppStep, GameHeader, GameState, RawOcrMovePair } from './types';
 import { validateMoveSequence, revalidateFromIndex, generatePgn } from './services/chessEngine';
 import { recognizeScoreSheet, fileToBase64 } from './services/visionApi';
 import type { ApiProvider } from './services/visionApi';
@@ -34,9 +34,19 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>({
     header: DEFAULT_HEADER,
     moves: [],
+    rawOcrMoves: [],
+    corrections: {},
     selectedMoveIndex: -1,
+    imageUrl: null,
   });
   const imageFileRef = useRef<File | null>(null);
+
+  // Cleanup image URL on unmount or new scan
+  useEffect(() => {
+    return () => {
+      if (gameState.imageUrl) URL.revokeObjectURL(gameState.imageUrl);
+    };
+  }, [gameState.imageUrl]);
 
   const handleApiKeySet = useCallback((key: string, provider: ApiProvider) => {
     setApiKey(key);
@@ -60,7 +70,7 @@ export default function App() {
         const base64 = await fileToBase64(file);
         const result = await recognizeScoreSheet(base64, apiKey, file.type, apiProvider);
 
-        const rawMoves = result.moves.map((m) => ({
+        const rawMoves: RawOcrMovePair[] = result.moves.map((m) => ({
           moveNumber: m.moveNumber,
           white: m.whiteMove,
           black: m.blackMove,
@@ -75,10 +85,18 @@ export default function App() {
           }
         }
 
-        setGameState({
-          header: result.header,
-          moves: validatedMoves,
-          selectedMoveIndex: validatedMoves.length > 0 ? validatedMoves.length - 1 : -1,
+        const imageUrl = URL.createObjectURL(file);
+
+        setGameState((prev) => {
+          if (prev.imageUrl) URL.revokeObjectURL(prev.imageUrl);
+          return {
+            header: result.header,
+            moves: validatedMoves,
+            rawOcrMoves: rawMoves,
+            corrections: {},
+            selectedMoveIndex: validatedMoves.length > 0 ? 0 : -1,
+            imageUrl,
+          };
         });
         setStep('review');
       } catch (err) {
@@ -98,9 +116,11 @@ export default function App() {
   const handleCorrectMove = useCallback((index: number, newSan: string) => {
     setGameState((prev) => {
       const newMoves = revalidateFromIndex(prev.moves, index, newSan);
+      const newCorrections = { ...prev.corrections, [index]: newSan };
       return {
         ...prev,
         moves: newMoves,
+        corrections: newCorrections,
         selectedMoveIndex: Math.min(index, newMoves.length - 1),
       };
     });
@@ -126,7 +146,17 @@ export default function App() {
 
   const handleStartOver = useCallback(() => {
     setStep('upload');
-    setGameState({ header: DEFAULT_HEADER, moves: [], selectedMoveIndex: -1 });
+    setGameState((prev) => {
+      if (prev.imageUrl) URL.revokeObjectURL(prev.imageUrl);
+      return {
+        header: DEFAULT_HEADER,
+        moves: [],
+        rawOcrMoves: [],
+        corrections: {},
+        selectedMoveIndex: -1,
+        imageUrl: null,
+      };
+    });
     setError(null);
     imageFileRef.current = null;
   }, []);
@@ -175,12 +205,19 @@ export default function App() {
     [step, handleNavigate]
   );
 
-  const currentFen =
-    gameState.selectedMoveIndex >= 0 && gameState.moves[gameState.selectedMoveIndex]?.isValid
-      ? gameState.moves[gameState.selectedMoveIndex].fenAfter
-      : gameState.selectedMoveIndex === -1
-        ? STARTING_FEN
-        : gameState.moves[gameState.selectedMoveIndex]?.fenBefore || STARTING_FEN;
+  // Show the position BEFORE the selected move (so legal moves match what the user sees)
+  const selectedMove = gameState.selectedMoveIndex >= 0
+    ? gameState.moves[gameState.selectedMoveIndex]
+    : null;
+
+  const currentFen = selectedMove?.isValid
+    ? selectedMove.fenAfter
+    : selectedMove
+      ? selectedMove.fenBefore
+      : STARTING_FEN;
+
+  // Legal alternatives are from before the selected move
+  const legalMovesAtSelected = selectedMove?.legalAlternatives ?? [];
 
   return (
     <div
@@ -189,7 +226,7 @@ export default function App() {
       onKeyDown={handleKeyDown}
     >
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{'\u265F'}</span>
             <h1 className="text-xl font-bold text-gray-800">PGN Scanner</h1>
@@ -209,7 +246,7 @@ export default function App() {
       </header>
 
       {error && (
-        <div className="max-w-7xl mx-auto px-4 mt-4">
+        <div className="max-w-[1600px] mx-auto px-4 mt-4">
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center justify-between">
             <span>{error}</span>
             <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
@@ -219,7 +256,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className="max-w-[1600px] mx-auto px-4 py-6">
         {(step === 'upload' || step === 'processing') && (
           <div className="py-12">
             <ImageUpload onImageSelected={handleImageSelected} isProcessing={isProcessing} />
@@ -227,8 +264,23 @@ export default function App() {
         )}
 
         {step === 'review' && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6">
-            <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_auto] gap-6" style={{ maxHeight: 'calc(100vh - 140px)' }}>
+            {/* Left: Original image */}
+            <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Score Sheet</h3>
+                {gameState.imageUrl && (
+                  <img
+                    src={gameState.imageUrl}
+                    alt="Score sheet"
+                    className="w-full rounded-md"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Center: Header + Move list */}
+            <div className="flex flex-col gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 140px)' }}>
               <HeaderEditor header={gameState.header} onChange={handleHeaderChange} />
               <div className="flex-1 min-h-0">
                 <MoveList
@@ -240,6 +292,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Right: Board + Legal moves + Controls */}
             <div className="flex flex-col items-center gap-4">
               <BoardViewer fen={currentFen} />
 
@@ -247,13 +300,41 @@ export default function App() {
                 <button onClick={() => handleNavigate('start')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to start">{'\u23EE'}</button>
                 <button onClick={() => handleNavigate('prev')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Previous move">{'\u25C0'}</button>
                 <span className="px-3 text-sm text-gray-500 font-mono min-w-[80px] text-center">
-                  {gameState.selectedMoveIndex >= 0
-                    ? `${gameState.moves[gameState.selectedMoveIndex].moveNumber}${gameState.moves[gameState.selectedMoveIndex].color === 'w' ? '.' : '...'}`
+                  {selectedMove
+                    ? `${selectedMove.moveNumber}${selectedMove.color === 'w' ? '.' : '...'}`
                     : 'Start'}
                 </span>
                 <button onClick={() => handleNavigate('next')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Next move">{'\u25B6'}</button>
                 <button onClick={() => handleNavigate('end')} className="p-2 rounded hover:bg-gray-200 text-gray-600" title="Go to end">{'\u23ED'}</button>
               </div>
+
+              {/* Legal moves panel */}
+              {selectedMove && (
+                <div className="w-full bg-white rounded-lg border border-gray-200 shadow-sm p-3">
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">
+                    Legal Moves at {selectedMove.moveNumber}{selectedMove.color === 'w' ? '.' : '...'}
+                    <span className="text-xs font-normal text-gray-400 ml-2">
+                      ({legalMovesAtSelected.length} moves)
+                    </span>
+                  </h3>
+                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                    {legalMovesAtSelected.map((move) => (
+                      <button
+                        key={move}
+                        className={`px-2 py-0.5 text-xs font-mono rounded border transition-colors ${
+                          move === selectedMove.san
+                            ? 'bg-blue-100 border-blue-400 text-blue-800 font-bold'
+                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-blue-50 hover:border-blue-300'
+                        }`}
+                        onClick={() => handleCorrectMove(gameState.selectedMoveIndex, move)}
+                        title={move === selectedMove.san ? 'Current move' : `Change to ${move}`}
+                      >
+                        {move}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={handleExportPgn}
@@ -266,19 +347,6 @@ export default function App() {
                 <pre className="whitespace-pre-wrap">
                   {generatePgn(gameState.header, gameState.moves)}
                 </pre>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
-                <h3 className="text-sm font-semibold text-gray-600 mb-2">Original Image</h3>
-                {imageFileRef.current && (
-                  <img
-                    src={URL.createObjectURL(imageFileRef.current)}
-                    alt="Score sheet"
-                    className="w-full rounded-md"
-                  />
-                )}
               </div>
             </div>
           </div>

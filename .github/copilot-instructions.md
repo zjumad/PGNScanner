@@ -25,7 +25,7 @@ web/src/
 ├── services/
 │   ├── visionApi.ts           # OCR via Gemini REST API or OpenAI Chat Completions (vision)
 │   ├── chessEngine.ts         # Move validation, fuzzy matching, PGN generation
-│   └── types.ts               # Re-exports from chessEngine
+│   └── types.ts               # Re-exports chessEngine functions (not type definitions)
 ├── components/
 │   ├── ImageUpload.tsx         # File/camera input
 │   ├── ApiKeyDialog.tsx        # API key + provider selection
@@ -52,6 +52,7 @@ web/src/
 
 - React functional components with hooks; no class components
 - TailwindCSS v4 with Vite plugin (no `tailwind.config.js` — uses `@tailwindcss/vite`)
-- TypeScript strict mode (`tsconfig.app.json`)
+- TypeScript with strict-ish flags (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`, `verbatimModuleSyntax`) but not `strict: true`
 - chess.js for all move legality — never manually validate chess rules
+- `openai` package is listed as a dependency but not imported; both API providers use raw `fetch`
 - Flat ESLint config (`eslint.config.js`) with `typescript-eslint` + React hooks/refresh plugins
