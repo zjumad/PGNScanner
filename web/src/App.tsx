@@ -193,7 +193,7 @@ export default function App() {
           return {
             header: result.header,
             moves: allMoves,
-            rawOcrMoves: rawMoves.map(m => ({ moveNumber: m.moveNumber, white: m.white, black: m.black })),
+            rawOcrMoves: rawMoves.map(m => ({ moveNumber: m.moveNumber, white: m.white, black: m.black, rowBBox: m.rowBBox })),
             corrections: {},
             selectedMoveIndex: allMoves.length > 0 ? 0 : -1,
             imageUrls,

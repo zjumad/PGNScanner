@@ -621,7 +621,7 @@ export function generatePgn(
  * OCR output even when validation stops early.
  */
 export function buildSpeculativeTail(
-  rawMoves: { moveNumber: number; white: string; black: string }[],
+  rawMoves: { moveNumber: number; white: string; black: string; rowBBox?: import('../types').CellBoundingBox }[],
   validatedCount: number,
   lastFen: string
 ): import('../types').ValidatedMove[] {
@@ -652,6 +652,7 @@ export function buildSpeculativeTail(
           legalAlternatives: [],
           fenAfter: lastFen,
           fenBefore: lastFen,
+          bbox: m.rowBBox,
         });
       }
       halfIndex++;
@@ -669,6 +670,7 @@ export function buildSpeculativeTail(
           legalAlternatives: [],
           fenAfter: lastFen,
           fenBefore: lastFen,
+          bbox: m.rowBBox,
         });
       }
       halfIndex++;

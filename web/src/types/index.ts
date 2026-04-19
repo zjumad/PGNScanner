@@ -56,6 +56,8 @@ export interface RawOcrMovePair {
   moveNumber: number;
   white: string;
   black: string;
+  /** Bounding box covering this row (normalized 0-1), used for image crops */
+  rowBBox?: CellBoundingBox;
 }
 
 export interface GameState {
