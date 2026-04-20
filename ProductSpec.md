@@ -100,6 +100,7 @@ After EXIF correction and before OCR, the user is presented with an interactive 
    - **Scan**: Proceeds to OCR processing with the current image(s) (whether warped or original).
    - **Reset**: Discards any perspective adjustments and restores the originally uploaded (EXIF-corrected) image(s), resetting corners to the image edges.
 6. The perspective warp uses a pure JavaScript implementation (no OpenCV): an 8×8 homography solver with Gaussian elimination, applied via a mesh-based canvas warp (20×20 grid cells with affine approximation per cell). Output dimensions are capped at 4096px to prevent mobile memory issues.
+7. **Mobile touch optimization**: Corner handles have a 48×48px invisible touch target (meeting Apple's 44px minimum guideline) with a smaller visible circle inside, making them easy to grab on touchscreens.
 
 #### Multi-Image Merge
 
@@ -143,7 +144,7 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
   - Moves of white on the left, moves of black on the right, and the pictures sheet in between
     - The white move and the black move of the same move should align to the same row. Between is the piece of the picture on notation sheet, cropped to only the 2 cells of the moves.
     - This grid is scollable, diplaying only 3 moves, with the currently focused step in the middle row, one move before and one move after also visible on screen.
-    - This grid auto scroll when the currently focus move changes.
+    - This grid auto scrolls when the currently focused move changes. The scroll is constrained to the move list container only — it does not scroll the entire page (important for mobile browsers like iOS Safari/Chrome).
     - Allocate the width of the grid to 25%, 50%, 25% for White, Sheet, Black, respectively
     - The cropped image of each row should zoom into the portion of the pictures having the cells for the move.
     - Avoid the two rotate icons on teh header of Sheet column
@@ -169,12 +170,11 @@ The review screen uses a **tabbed single-column layout** with three tabs: **Boar
 
 #### Debug Info tab
 - Shows the raw OCR JSON output in a scrollable text area.
-- Displays the uploaded image(s) with:
+- Displays the processed image(s) (perspective-adjusted, not the raw uploads) with:
   - **Coordinate readout**: Shows the X:Y position (normalized 0–1) of the cursor when hovering over the image.
   - **Grid overlay**: Colored rectangles showing the detected grid bounding boxes (red = left grid, blue = right grid, green = third grid if present).
   - **Draggable/resizable rectangles**: The grid overlay rectangles can be dragged and resized to manually adjust grid coordinates.
   - **Grid controls**: Inputs for number of grids (1/2/3) and rows per grid.
-  - **Calibration mode**: Click two points on the image (top-left of row 1, bottom-right of last row) to set the left grid bounding box.
 - Changes to grid rectangles immediately recompute all move bounding boxes for the Sheet column crops.
 
 ## Move Validation Engine
@@ -277,6 +277,20 @@ In the review screen, the following keyboard shortcuts are available (when the a
 - TailwindCSS v4 for styling.
 - No backend — everything runs client-side. API keys are sent directly from the browser.
 - No test framework is currently configured.
+- Vite `base` path is mode-aware: `/PGNScanner/` for web (GitHub Pages), `/` for Capacitor (iOS) builds.
+- Dev server is configured with `host: true` to enable local network access for testing on mobile devices.
+
+## iOS App (Capacitor)
+
+The app is packaged as a native iOS app using **Capacitor**:
+
+- **Capacitor** wraps the web app in a native iOS WebView for App Store distribution.
+- App ID: `com.pgnscanner.app`, App Name: "PGN Scanner".
+- The WebView uses `https` scheme (`iosScheme: 'https'`) for compatibility with external API calls.
+- **Build scripts**: `npm run build:ios` builds the web app with `base: '/'` (Capacitor mode); `npm run cap:sync` syncs the web assets into the native iOS project.
+- **CI/CD**: A GitHub Actions workflow (`.github/workflows/ios-build.yml`) builds the iOS app on a `macos-15` runner with Node 22. It creates the `ios/` project if not present, syncs Capacitor, and compiles with Xcode (unsigned, simulator target). The build artifact is uploaded for download.
+- **Requirements**: Capacitor CLI requires Node ≥ 22. An Apple Developer account ($99/yr) is needed for App Store signing and distribution.
+- **Future**: Move API keys behind a backend proxy before public App Store release to prevent secret extraction from the app bundle.
 
 ## Design References
 
